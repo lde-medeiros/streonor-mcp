@@ -1,10 +1,15 @@
+param([switch]$Quiet)
 $ErrorActionPreference = 'Stop'
 $source = Join-Path $PSScriptRoot 'STREONOR-MCP.exe'
 if (-not (Test-Path -LiteralPath $source)) { throw 'STREONOR-MCP.exe must be next to the installer.' }
 $root = Join-Path $env:LOCALAPPDATA 'STREONOR-MCP'
 $app = Join-Path $root 'app'
 New-Item -ItemType Directory -Force -Path $app | Out-Null
-Get-Process -Name STREONOR-MCP -ErrorAction SilentlyContinue | Stop-Process -Force
+$running = @(Get-Process -Name STREONOR-MCP -ErrorAction SilentlyContinue)
+if ($running.Count) {
+    $running | Stop-Process -Force -ErrorAction SilentlyContinue
+    $running | Wait-Process -Timeout 10 -ErrorAction SilentlyContinue
+}
 Copy-Item -LiteralPath $source -Destination (Join-Path $app 'STREONOR-MCP.exe') -Force
 $tokenFile = Join-Path $root 'token.txt'
 if (-not (Test-Path -LiteralPath $tokenFile)) {
@@ -29,5 +34,7 @@ $shortcut.Arguments = '--http'
 $shortcut.WorkingDirectory = $app
 $shortcut.Save()
 Start-Process -FilePath $exe -ArgumentList '--http' -WorkingDirectory $app
-Add-Type -AssemblyName System.Windows.Forms
-[System.Windows.Forms.MessageBox]::Show('STREONOR MCP installed. Restart Codex to load its MCP connection. This early version requires STREONOR to be closed before editing profiles.', 'STREONOR MCP') | Out-Null
+if (-not $Quiet) {
+    Add-Type -AssemblyName System.Windows.Forms
+    [System.Windows.Forms.MessageBox]::Show('STREONOR MCP installed. Restart Codex to load its MCP connection. This early version requires STREONOR to be closed before editing profiles.', 'STREONOR MCP') | Out-Null
+}
