@@ -72,7 +72,7 @@ class ProfileTests(unittest.TestCase):
         src = Path(self.temp.name) / 'source.jpg'
         out = Path(self.temp.name) / 'logo.png'
         Image.new('RGB', (100, 100), 'red').save(src)
-        result = profiles.prepare_boot_logo(str(src), str(out))
+        result = profiles.prepare_boot_logo('streonor-s6-mini', str(src), str(out))
         self.assertEqual((result['width'], result['height']), (320, 240))
         with Image.open(out) as image:
             self.assertEqual(image.size, (320, 240))

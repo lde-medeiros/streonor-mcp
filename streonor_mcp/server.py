@@ -8,6 +8,7 @@ import sys
 
 from mcp.server.fastmcp import FastMCP
 from . import profiles
+from .devices import DEVICES, describe
 
 mcp = FastMCP('STREONOR MCP')
 DATA = Path(os.environ.get('LOCALAPPDATA', str(Path.home()))) / 'STREONOR-MCP'
@@ -18,9 +19,14 @@ def find_icons(query: str, limit: int = 50) -> list[dict]:
     return profiles.find_icons(query, limit)
 
 @mcp.tool()
-def prepare_s6_boot_logo(image_path: str, output_path: str) -> dict:
-    """Convert an image on this PC into a 320x240 PNG for the S6 Mini. This only prepares a file; it does not write device firmware or boot-logo storage."""
-    return profiles.prepare_boot_logo(image_path, output_path)
+def prepare_boot_logo(device_id: str, image_path: str, output_path: str) -> dict:
+    """Prepare an image at the selected model's registered dimensions; does not write the device."""
+    return profiles.prepare_boot_logo(device_id, image_path, output_path)
+
+@mcp.tool()
+def list_supported_devices() -> list[dict]:
+    """List models and known controls and logo specifications from the community registry."""
+    return [describe(spec.id) for spec in DEVICES]
 
 @mcp.tool()
 def list_available_actions() -> list[dict]:

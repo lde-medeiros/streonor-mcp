@@ -10,6 +10,7 @@ import subprocess
 import tempfile
 import time
 from PIL import Image, ImageOps
+from .devices import DEVICES, get_device
 
 ROOT = Path(os.environ.get('APPDATA', '')) / 'HotSpot' / 'StreamDock' / 'profiles'
 BACKUPS = Path(os.environ.get('LOCALAPPDATA', str(Path.home()))) / 'STREONOR-MCP' / 'backups'
@@ -46,7 +47,9 @@ def list_profiles(root=ROOT):
     for manifest in sorted(root.glob('*.sdProfile/manifest.json')):
         try:
             data, digest = read_manifest(manifest.parent.name, root=root)
-            result.append({'id': manifest.parent.name, 'name': data.get('Name'), 'device': data.get('DeviceUUID'), 'pages': data.get('Pages'), 'sha256': digest})
+            software_id = data.get('DeviceUUID')
+            spec = next((d for d in DEVICES if software_id in d.software_ids), None)
+            result.append({'id': manifest.parent.name, 'name': data.get('Name'), 'device': software_id, 'device_model': spec.id if spec else None, 'pages': data.get('Pages'), 'sha256': digest})
         except (OSError, ValueError, json.JSONDecodeError):
             continue
     return result
@@ -121,16 +124,21 @@ def read_icon(image_path):
     return data
 
 
-def prepare_boot_logo(image_path, output_path):
-    """Create a 320x240 PNG for manual use with a documented STREONOR import flow."""
+def prepare_boot_logo(device_id, image_path, output_path):
+    """Prepare an image using model metadata. This never writes device storage."""
+    spec = get_device(device_id)
+    if not spec.supported:
+        raise ValueError(f'{spec.name} is listed but not yet supported')
+    if not spec.boot_logo_size:
+        raise ValueError(f'{spec.name} has no registered boot-logo dimensions')
     data = read_icon(image_path)
     output = Path(output_path).expanduser().resolve()
     if output.suffix.lower() != '.png':
         raise ValueError('Boot logo output must use the .png extension')
     with Image.open(io.BytesIO(data)) as source:
-        image = ImageOps.fit(ImageOps.exif_transpose(source).convert('RGB'), (320, 240), method=Image.Resampling.LANCZOS)
+        image = ImageOps.fit(ImageOps.exif_transpose(source).convert('RGB'), spec.boot_logo_size, method=Image.Resampling.LANCZOS)
         output.parent.mkdir(parents=True, exist_ok=True)
-        with tempfile.NamedTemporaryFile(dir=output.parent, prefix='.s6-logo-', suffix='.png', delete=False) as f:
+        with tempfile.NamedTemporaryFile(dir=output.parent, prefix='.device-logo-', suffix='.png', delete=False) as f:
             temp = Path(f.name)
             image.save(f, format='PNG')
             f.flush()
@@ -139,7 +147,7 @@ def prepare_boot_logo(image_path, output_path):
             os.replace(temp, output)
         finally:
             temp.unlink(missing_ok=True)
-    return {'path': str(output), 'width': 320, 'height': 240, 'format': 'PNG', 'device_written': False}
+    return {'path': str(output), 'device': spec.id, 'width': spec.boot_logo_size[0], 'height': spec.boot_logo_size[1], 'format': 'PNG', 'device_written': False}
 
 
 def prepare_action(profile, page, operation, coordinate, source_coordinate='', image_path='', root=ROOT):
