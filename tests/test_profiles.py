@@ -51,6 +51,22 @@ class ProfileTests(unittest.TestCase):
             profiles.apply_action(self.profile, None, 'remove', '1,0', c['sha256'], root=self.root, backups=self.backups)
             self.assertNotIn('1,0', json.loads(self.path.read_text())['Actions'])
 
+    def test_create_action_from_template_and_imported_icon(self):
+        from PIL import Image
+        image = Path(self.temp.name) / 'local.webp'
+        Image.new('RGB', (12, 8), 'blue').save(image, format='WEBP')
+        with patch('streonor_mcp.profiles.vendor_running', return_value=False):
+            c = profiles.prepare_action(self.profile, None, 'create_from_template', '1,1', '0,0', root=self.root)
+            profiles.apply_action(self.profile, None, 'create_from_template', '1,1', c['sha256'], '0,0', root=self.root, backups=self.backups)
+            imgdir = self.path.parent / 'Images'
+            imgdir.mkdir()
+            Image.new('RGB', (12, 8), 'green').save(imgdir / 'imported.png', format='PNG')
+            c = profiles.prepare_action(self.profile, None, 'use_existing_icon', '1,1', image_path=str(imgdir / 'imported.png'), root=self.root)
+            profiles.apply_action(self.profile, None, 'use_existing_icon', '1,1', c['sha256'], image_path=str(imgdir / 'imported.png'), expected_image_sha256=c['image_sha256'], root=self.root, backups=self.backups)
+        action = json.loads(self.path.read_text())['Actions']['1,1']
+        self.assertEqual(action['States'][0]['Image'], 'imported.png')
+        self.assertNotEqual(action['ActionID'], self.original['Actions']['0,0'].get('ActionID'))
+
     def test_invalid_inputs(self):
         with self.assertRaises(ValueError):
             profiles.profile_path('../other.sdProfile', root=self.root)

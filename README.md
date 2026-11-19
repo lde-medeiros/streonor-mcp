@@ -2,11 +2,11 @@
 
 Experimental Windows MCP integration for STREONOR's own stream controller app. S6 Mini is the first device under investigation. This community project is not affiliated with STREONOR.
 
-**Status: early prototype, not a finished installer or live integration.** The current MCP tools can list and read STREONOR profiles and preview a change to an existing action setting. An offline edit mechanism has been tested with simulated files and with one approved, temporary change to an S6 website action; the user confirmed the change appeared in STREONOR and the original value was restored. Do not rely on it without a backup and explicit approval. It cannot yet add or delete actions, edit icons, create profiles, or update the running app live.
+**Status: release candidate for profile inspection and offline edits.** MCP can discover installed actions, inspect profiles, preview edits, change existing action settings, create an action from an installed action template, remove actions, and set or clear icons. Changes are written to the app's profile files and appear after reopening STREONOR. This is not an official STREONOR plugin and cannot update the running app live. Profile creation, deletion, page management, and live Toolbox invocation are not supported. Action templates must already exist in a profile; use the app to add an action type once, then MCP can clone/configure it.
 
-STREONOR stores profiles under `%APPDATA%\HotSpot\StreamDock\profiles`. `preview_setting_change` identifies the previous and new values and hashes the file. `apply_setting_change` requires STREONOR to be closed, checks the hash, creates a backup under `%LOCALAPPDATA%\STREONOR-MCP\backups`, and replaces the manifest. Closing the app avoids its in-memory data overwriting external changes, but does not eliminate a race if the app starts during the operation. Never assume an unknown setting is safe to edit. Reopen STREONOR to check the result. Do not use this mechanism for unattended edits.
+STREONOR stores profiles under `%APPDATA%\HotSpot\StreamDock\profiles`. `preview_setting_change` identifies the previous and new values and hashes the file. `apply_setting_change` requires STREONOR to be closed, checks the hash, creates a backup under `%LOCALAPPDATA%\STREONOR-MCP\backups`, and replaces the manifest. Closing the app avoids its in-memory data overwriting external changes, but does not eliminate a race if the app starts during the operation. Unknown action settings remain editable only when the JSON value type matches. Every edit makes a timestamped manifest backup. Reopen STREONOR to check changes.
 
-Tools: `list_profiles`, `read_profile`, `preview_setting_change`, and `apply_setting_change`. Only existing settings of matching JSON type are accepted. Exact supported device and action behavior is not yet verified. The MCP server does not control USB hardware and can run with STREONOR open for reading.
+Tools: `list_available_actions`, `list_profiles`, `read_profile`, `find_icons`, `preview_setting_change`, `apply_setting_change`, `preview_action_change`, and `apply_action_change`. Icon inputs accept PNG, JPEG, BMP, GIF, and WebP from this PC; image data is normalized to PNG. Imported app PNG icons can be reused by selecting the exact file from that profile’s `Images` folder. `find_icons` searches imported icon packs.
 
 ## Developer setup
 
@@ -14,8 +14,4 @@ Install Python 3.12+ on Windows, then create a virtual environment and install `
 
 Run simulated tests with `python -m unittest discover -s tests`. `tests/smoke_http.py` tests a running HTTP server without changing profiles.
 
-## Next steps
-
-Investigate the [StreamDock plugin SDK](https://github.com/MiraboxSpace/StreamDock-Plugin-SDK) and test whether the STREONOR version allows changes through its running UI. Implement and verify app-visible editing, conflict handling, user approval, and a native installer before calling this complete. Other models need independent testing.
-
-A Windows executable can be built with `pyinstaller STREONOR-MCP.spec`. Place it beside `install.ps1` and `setup.cmd`, then run `setup.cmd` to install the background server and startup shortcut. If Codex is installed, the installer adds its MCP connection unless one named `streonor` already exists. This is an early installer, not a STREONOR app plugin.
+A Windows executable can be built with `pyinstaller STREONOR-MCP.spec`. Place it beside `install.ps1` and `setup.cmd`, then run `setup.cmd` to install the background server and startup shortcut. If Codex is installed, the installer adds its MCP connection unless one named `streonor` already exists. The installer starts the local server at Windows sign-in. Restart Codex after installation to load the MCP tools.

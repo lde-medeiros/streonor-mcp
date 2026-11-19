@@ -127,13 +127,16 @@ def prepare_action(profile, page, operation, coordinate, source_coordinate='', i
     if not re.fullmatch(r'\d+,\d+', coordinate):
         raise ValueError('Coordinate must use the app format, for example 0,0')
     before = actions.get(coordinate)
-    if operation == 'clone':
+    if operation in ('clone', 'create_from_template'):
         if before is not None:
             raise ValueError('Destination already has an action; remove it explicitly first')
         source = actions.get(source_coordinate)
         if not isinstance(source, dict) or 'Actions' in source:
             raise ValueError('Choose an existing single action on this page as the source')
-        detail = {'source': source_coordinate, 'action': source.get('Name')}
+        if operation == 'create_from_template':
+            if not isinstance(source.get('Settings'), dict) or not isinstance(source.get('States'), list):
+                raise ValueError('Source action cannot be used as a template')
+        detail = {'source': source_coordinate, 'action': source.get('Name'), 'uuid': source.get('UUID')}
     elif operation in ('remove', 'set_icon', 'clear_icon', 'use_existing_icon'):
         if not isinstance(before, dict):
             raise ValueError('No action exists at that coordinate')
@@ -152,7 +155,7 @@ def prepare_action(profile, page, operation, coordinate, source_coordinate='', i
             image = read_icon(image_path)
             detail.update(image_path=image_path, image_sha256=fingerprint(image))
     else:
-        raise ValueError('Operation must be clone, remove, set_icon, use_existing_icon, or clear_icon')
+        raise ValueError('Operation must be clone, create_from_template, remove, set_icon, use_existing_icon, or clear_icon')
     return {'profile': profile, 'page': page, 'coordinate': coordinate, 'operation': operation, 'sha256': digest, **detail}
 
 
@@ -174,7 +177,7 @@ def apply_action(profile, page, operation, coordinate, expected_sha256, source_c
     actions = doc['Actions']
     icon = None
     icon_data = None
-    if operation == 'clone':
+    if operation in ('clone', 'create_from_template'):
         action = copy.deepcopy(actions[source_coordinate])
         action['ActionID'] = str(uuid.uuid4())
         actions[coordinate] = action
