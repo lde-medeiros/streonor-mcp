@@ -1,27 +1,19 @@
 # STREONOR MCP
 
-A native Windows MCP server for controlling a STREONOR stream controller. Currently supported: **S6 Mini** (VID 1500, PID 3006). This is an independent community project, not affiliated with STREONOR.
+Experimental Windows MCP integration for STREONOR's own stream controller app. S6 Mini is the first device under investigation. This community project is not affiliated with STREONOR.
 
-The server owns the S6 USB interface and executes assigned Windows hotkeys, opens files/apps or URLs when physical keys, scene buttons, and dial controls are used. An MCP client can list, set and remove assignments and inspect the latest input. LCD keys show a label or a supplied image. Assignments are stored in `%LOCALAPPDATA%\STREONOR-MCP\actions.json`; they are separate from STREONOR's own profiles. No firmware or boot logo is modified.
+**Status: early prototype, not a finished installer or live integration.** The current MCP tools can list and read STREONOR profiles and preview a change to an existing action setting. An offline edit mechanism exists and is tested with simulated profile files, but has **not** been tested on a real STREONOR profile or validated in the app. Do not rely on it without a backup and explicit approval. It cannot yet add or delete actions, edit icons, create profiles, or update the running app live.
 
-**Early development:** S6 protocol and mappings are based on hardware observed during earlier DeckBridge testing. This implementation has not yet been validated end to end. Quit STREONOR and any other controller software before connecting; only one program should control the device.
+STREONOR stores profiles under `%APPDATA%\HotSpot\StreamDock\profiles`. `preview_setting_change` identifies the previous and new values and hashes the file. `apply_setting_change` requires STREONOR to be closed, checks the hash, creates a backup under `%LOCALAPPDATA%\STREONOR-MCP\backups`, and replaces the manifest. Closing the app avoids its in-memory data overwriting external changes, but does not eliminate a race if the app starts during the operation. Never assume an unknown setting is safe to edit. Reopen STREONOR to check the result. Do not use this mechanism for unattended edits.
 
-## Setup
+Tools: `list_profiles`, `read_profile`, `preview_setting_change`, and `apply_setting_change`. Only existing settings of matching JSON type are accepted. Exact supported device and action behavior is not yet verified. The MCP server does not control USB hardware and can run with STREONOR open for reading.
 
-Requires Windows 10/11, Python 3.12 or newer and a USB-connected S6 Mini. Run `py -m venv .venv` and `.venv\Scripts\python.exe -m pip install -r requirements.txt` from this folder. Connect an MCP client using stdio, with the working directory set to this project folder:
+## Developer setup
 
-```json
-{"command":"C:\\path\\to\\streonor-mcp\\.venv\\Scripts\\python.exe","args":["-m","streonor_mcp.server"],"cwd":"C:\\path\\to\\streonor-mcp"}
-```
+Install Python 3.12+ on Windows, then create a virtual environment and install `requirements.txt`. Run `python run.py --http` for a localhost-only MCP endpoint at `http://127.0.0.1:29606/mcp`. Its bearer token is created in `%LOCALAPPDATA%\STREONOR-MCP\token.txt`. Keep it secret and connect only trusted clients: they can read profile contents and request changes. For stdio run `python -m streonor_mcp.server` instead. Do not run more than one server on the same port.
 
-The MCP client must keep the server running for buttons to work; reconnecting the client restarts it. It automatically reconnects after USB disconnection. Do not run multiple copies. On opening, the device's current on-screen images are replaced for the session. Close the MCP server before opening STREONOR software again.
+Run simulated tests with `python -m unittest discover -s tests`. `tests/smoke_http.py` tests a running HTTP server without changing profiles.
 
-Tools: `device_status`, `list_assignments`, `set_assignment`, `remove_assignment`. Example: set `control=key1`, `event=press`, `action_type=hotkey`, `value=ctrl+shift+s`, `label=Save`. For dial rotation use `control=dial1`, `event=left` or `right`; for dial clicks use `press`. Numbers run left to right, top to bottom for keys. Example media shortcuts: `volumeup`, `volumedown`, `mute`, `playpause`.
+## Next steps
 
-The server runs with your Windows account's permissions; only connect trusted MCP clients. `open` may launch executable files. The server cannot edit STREONOR software profiles, run its plugins, or make its UI display these assignments.
-
-Run tests with `.venv\Scripts\python.exe -m unittest discover -s tests`.
-
-## Protocol sources
-
-S6 input mappings and orientation were captured in prior tests. CRT packets are based on [EspUsbHost's MacroPadN3 example](https://github.com/tanakamasayuki/EspUsbHost/tree/main/examples/HID/EspUsbHostMacroPadN3) and the [DeckBridge Mirabox driver](https://github.com/lukasMega/DeckBridge/blob/main/ts/src/devices/mirabox/protocol.ts). Other models require separate validation.
+Investigate the [StreamDock plugin SDK](https://github.com/MiraboxSpace/StreamDock-Plugin-SDK) and test whether the STREONOR version allows changes through its running UI. Implement and verify app-visible editing, conflict handling, user approval, and a native installer before calling this complete. Other models need independent testing.
