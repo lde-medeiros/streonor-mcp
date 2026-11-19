@@ -1,5 +1,6 @@
 """Inspect and safely prepare offline edits to STREONOR profile manifests."""
 import hashlib
+import io
 import json
 import os
 from pathlib import Path
@@ -8,6 +9,7 @@ import shutil
 import subprocess
 import tempfile
 import time
+from PIL import Image, ImageOps
 
 ROOT = Path(os.environ.get('APPDATA', '')) / 'HotSpot' / 'StreamDock' / 'profiles'
 BACKUPS = Path(os.environ.get('LOCALAPPDATA', str(Path.home()))) / 'STREONOR-MCP' / 'backups'
@@ -103,3 +105,160 @@ def apply(profile, page, coordinate, setting, new_value, expected_sha256, root=R
         if temp:
             temp.unlink(missing_ok=True)
     return {'updated': True, 'backup': str(backup), 'new_sha256': fingerprint(encoded), 'reopen_app': True}
+
+
+def read_icon(image_path):
+    path = Path(image_path)
+    if path.stat().st_size > 16 * 1024 * 1024:
+        raise ValueError('Icon must be no larger than 16 MiB')
+    data = path.read_bytes()
+    if len(data) > 16 * 1024 * 1024:
+        raise ValueError('Icon must be no larger than 16 MiB')
+    with Image.open(io.BytesIO(data)) as image:
+        if image.format not in ('PNG', 'JPEG', 'BMP', 'GIF', 'WEBP'):
+            raise ValueError('Use a PNG, JPEG, BMP, GIF, or WebP icon')
+        image.verify()
+    return data
+
+
+def prepare_action(profile, page, operation, coordinate, source_coordinate='', image_path='', root=ROOT):
+    doc, digest = read_manifest(profile, page, root)
+    actions = doc['Actions']
+    if not re.fullmatch(r'\d+,\d+', coordinate):
+        raise ValueError('Coordinate must use the app format, for example 0,0')
+    before = actions.get(coordinate)
+    if operation == 'clone':
+        if before is not None:
+            raise ValueError('Destination already has an action; remove it explicitly first')
+        source = actions.get(source_coordinate)
+        if not isinstance(source, dict) or 'Actions' in source:
+            raise ValueError('Choose an existing single action on this page as the source')
+        detail = {'source': source_coordinate, 'action': source.get('Name')}
+    elif operation in ('remove', 'set_icon', 'clear_icon', 'use_existing_icon'):
+        if not isinstance(before, dict):
+            raise ValueError('No action exists at that coordinate')
+        detail = {'action': before.get('Name'), 'uuid': before.get('UUID')}
+        if operation in ('set_icon', 'clear_icon', 'use_existing_icon'):
+            states = before.get('States')
+            if not isinstance(states, list) or not states or not isinstance(states[0], dict):
+                raise ValueError('This action has no editable first image state')
+            detail['old_image'] = states[0].get('Image', '')
+        if operation in ('set_icon', 'use_existing_icon'):
+            if operation == 'use_existing_icon':
+                image_dir = profile_path(profile, page, root).parent / 'Images'
+                candidate = Path(image_path).resolve(strict=True)
+                if candidate.parent != image_dir.resolve() or candidate.suffix.lower() != '.png':
+                    raise ValueError('Existing icon must be a PNG in this profile image folder')
+            image = read_icon(image_path)
+            detail.update(image_path=image_path, image_sha256=fingerprint(image))
+    else:
+        raise ValueError('Operation must be clone, remove, set_icon, use_existing_icon, or clear_icon')
+    return {'profile': profile, 'page': page, 'coordinate': coordinate, 'operation': operation, 'sha256': digest, **detail}
+
+
+def apply_action(profile, page, operation, coordinate, expected_sha256, source_coordinate='', image_path='', expected_image_sha256='', root=ROOT, backups=BACKUPS):
+    import copy
+    import uuid
+    if vendor_running():
+        raise RuntimeError('Quit STREONOR completely before editing profiles.')
+    preview = prepare_action(profile, page, operation, coordinate, source_coordinate, image_path, root)
+    if preview['sha256'] != expected_sha256:
+        raise ValueError('Profile changed since preview; inspect and preview again')
+    if operation in ('set_icon', 'use_existing_icon') and preview['image_sha256'] != expected_image_sha256:
+        raise ValueError('Icon changed since preview; inspect and preview again')
+    path = profile_path(profile, page, root)
+    original = path.read_bytes()
+    if fingerprint(original) != expected_sha256:
+        raise ValueError('Profile changed while preparing edit')
+    doc = json.loads(original.decode('utf-8-sig'))
+    actions = doc['Actions']
+    icon = None
+    icon_data = None
+    if operation == 'clone':
+        action = copy.deepcopy(actions[source_coordinate])
+        action['ActionID'] = str(uuid.uuid4())
+        actions[coordinate] = action
+    elif operation == 'remove':
+        del actions[coordinate]
+    elif operation == 'clear_icon':
+        actions[coordinate]['States'][0]['Image'] = ''
+    elif operation == 'use_existing_icon':
+        if fingerprint(read_icon(image_path)) != expected_image_sha256:
+            raise ValueError('Icon changed while preparing edit')
+        actions[coordinate]['States'][0]['Image'] = Path(image_path).name
+    else:
+        source_data = read_icon(image_path)
+        if fingerprint(source_data) != expected_image_sha256:
+            raise ValueError('Icon changed while preparing edit')
+        with Image.open(io.BytesIO(source_data)) as source:
+            source.seek(0)
+            image = ImageOps.exif_transpose(source).convert('RGBA')
+            image.thumbnail((1024, 1024))
+            output = io.BytesIO()
+            image.save(output, format='PNG')
+            icon_data = output.getvalue()
+        icon = uuid.uuid4().hex.upper() + '.png'
+        actions[coordinate]['States'][0]['Image'] = icon
+    backups.mkdir(parents=True, exist_ok=True)
+    backup = backups / f'{profile}-{time.time_ns()}.json'
+    with backup.open('xb') as f:
+        f.write(original)
+        f.flush()
+        os.fsync(f.fileno())
+    encoded = (json.dumps(doc, indent=4, ensure_ascii=False) + '\n').encode('utf-8')
+    temp = None
+    try:
+        if icon:
+            images = path.parent / 'Images'
+            images.mkdir(exist_ok=True)
+            if not images.resolve().is_relative_to(root.resolve()):
+                raise ValueError('Image directory escapes profile directory')
+            with (images / icon).open('xb') as f:
+                f.write(icon_data)
+                f.flush()
+                os.fsync(f.fileno())
+        with tempfile.NamedTemporaryFile(dir=path.parent, prefix='.streonor-mcp-', delete=False) as f:
+            temp = Path(f.name)
+            f.write(encoded)
+            f.flush()
+            os.fsync(f.fileno())
+        if vendor_running() or fingerprint(path.read_bytes()) != expected_sha256:
+            raise RuntimeError('STREONOR started or the profile changed; no manifest change was applied.')
+        os.replace(temp, path)
+        temp = None
+    finally:
+        if temp:
+            temp.unlink(missing_ok=True)
+    return {'updated': True, 'backup': str(backup), 'new_sha256': fingerprint(encoded), 'icon': icon, 'reopen_app': True}
+
+
+def list_installed_actions():
+    roots = [Path(os.environ.get('ProgramFiles(x86)', r'C:\Program Files (x86)')) / 'Streonor' / 'plugins',
+             Path(os.environ.get('APPDATA', '')) / 'HotSpot' / 'StreamDock' / 'plugins']
+    found = {}
+    for root in roots:
+        for path in sorted(root.glob('*.sdPlugin/manifest.json')):
+            try:
+                manifest = json.loads(path.read_text(encoding='utf-8-sig'))
+                for action in manifest.get('Actions', []):
+                    if not isinstance(action, dict) or not action.get('UUID'):
+                        continue
+                    found[action['UUID']] = {'uuid': action['UUID'], 'name': action.get('Name'), 'plugin': manifest.get('Name'), 'category': manifest.get('Category'), 'controllers': action.get('Controllers'), 'description': action.get('Tooltip')}
+            except (OSError, ValueError, TypeError):
+                continue
+    return sorted(found.values(), key=lambda action: (action['name'] or '').lower())
+
+
+def find_icons(query, limit=50):
+    if not isinstance(query, str) or not query.strip() or len(query) > 100:
+        raise ValueError('Enter a non-empty icon search term')
+    if not 1 <= limit <= 100:
+        raise ValueError('Limit must be between 1 and 100')
+    root = Path(os.environ.get('APPDATA', '')) / 'HotSpot' / 'StreamDock' / 'icons'
+    matches = []
+    for path in root.rglob('*'):
+        if path.is_file() and path.suffix.lower() in ('.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp', '.svg') and query.casefold() in path.stem.casefold():
+            matches.append({'name': path.stem, 'path': str(path), 'supported': path.suffix.lower() != '.svg'})
+            if len(matches) >= limit:
+                break
+    return matches
