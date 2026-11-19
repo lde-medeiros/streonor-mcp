@@ -67,6 +67,17 @@ class ProfileTests(unittest.TestCase):
         self.assertEqual(action['States'][0]['Image'], 'imported.png')
         self.assertNotEqual(action['ActionID'], self.original['Actions']['0,0'].get('ActionID'))
 
+    def test_boot_logo_preparation(self):
+        from PIL import Image
+        src = Path(self.temp.name) / 'source.jpg'
+        out = Path(self.temp.name) / 'logo.png'
+        Image.new('RGB', (100, 100), 'red').save(src)
+        result = profiles.prepare_boot_logo(str(src), str(out))
+        self.assertEqual((result['width'], result['height']), (320, 240))
+        with Image.open(out) as image:
+            self.assertEqual(image.size, (320, 240))
+        self.assertFalse(result['device_written'])
+
     def test_invalid_inputs(self):
         with self.assertRaises(ValueError):
             profiles.profile_path('../other.sdProfile', root=self.root)

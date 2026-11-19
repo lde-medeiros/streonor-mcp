@@ -121,6 +121,27 @@ def read_icon(image_path):
     return data
 
 
+def prepare_boot_logo(image_path, output_path):
+    """Create a 320x240 PNG for manual use with a documented STREONOR import flow."""
+    data = read_icon(image_path)
+    output = Path(output_path).expanduser().resolve()
+    if output.suffix.lower() != '.png':
+        raise ValueError('Boot logo output must use the .png extension')
+    with Image.open(io.BytesIO(data)) as source:
+        image = ImageOps.fit(ImageOps.exif_transpose(source).convert('RGB'), (320, 240), method=Image.Resampling.LANCZOS)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(dir=output.parent, prefix='.s6-logo-', suffix='.png', delete=False) as f:
+            temp = Path(f.name)
+            image.save(f, format='PNG')
+            f.flush()
+            os.fsync(f.fileno())
+        try:
+            os.replace(temp, output)
+        finally:
+            temp.unlink(missing_ok=True)
+    return {'path': str(output), 'width': 320, 'height': 240, 'format': 'PNG', 'device_written': False}
+
+
 def prepare_action(profile, page, operation, coordinate, source_coordinate='', image_path='', root=ROOT):
     doc, digest = read_manifest(profile, page, root)
     actions = doc['Actions']

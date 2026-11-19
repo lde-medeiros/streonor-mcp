@@ -18,6 +18,11 @@ def find_icons(query: str, limit: int = 50) -> list[dict]:
     return profiles.find_icons(query, limit)
 
 @mcp.tool()
+def prepare_s6_boot_logo(image_path: str, output_path: str) -> dict:
+    """Convert an image on this PC into a 320x240 PNG for the S6 Mini. This only prepares a file; it does not write device firmware or boot-logo storage."""
+    return profiles.prepare_boot_logo(image_path, output_path)
+
+@mcp.tool()
 def list_available_actions() -> list[dict]:
     """List action types from installed STREONOR plugin manifests, including Toolbox and dial actions."""
     return profiles.list_installed_actions()
