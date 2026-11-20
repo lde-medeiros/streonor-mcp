@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Import an edited scene copy with its pages and icons while STREONOR stays open on Windows.
+- Preview a full layout and import edits across multiple pages in one step. Create, replace, configure, or remove controls and choose which pages to rebuild.
+
 ## 0.7.1
 
 - Create a native Hotkey Switch with the same shortcut in both states.

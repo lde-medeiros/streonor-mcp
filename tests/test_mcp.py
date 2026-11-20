@@ -39,8 +39,17 @@ class MCPTests(unittest.IsolatedAsyncioTestCase):
             plugin = root / 'plugins' / 'fixture.sdPlugin'
             plugin.mkdir(parents=True)
             (plugin / 'manifest.json').write_text(json.dumps({'Name': 'Fixture', 'Actions': [{'Name': 'Website', 'UUID': 'website'}, {'Name': 'Hotkey fixture', 'UUID': 'com.hotspot.streamdock.system.hotkey', 'Controllers': ['Keypad', 'Knob']}]}))
-            # Process lifecycle is simulated; never close or edit the user's app.
-            params = StdioServerParameters(command=sys.executable, args=['-c', 'from streonor_mcp import profiles, server; profiles.vendor_running = lambda: False; server.main()'], env={'STREONOR_DATA_DIR': str(root / 'data'), 'STREONOR_PROFILES_DIR': str(root / 'profiles'), 'STREONOR_ICONS_DIR': str(icons)})
+            # Simulate the native importer and process lifecycle.
+            stub = (
+                'from streonor_mcp import profiles, server, live; '
+                'profiles.vendor_running = lambda: False; '
+                'live.import_scene = lambda profile, root, name, edits, hashes, images: '
+                'dict(pages=edits, images=len(images)); server.main()'
+            )
+            params = StdioServerParameters(command=sys.executable, args=['-c', stub], env={
+                'STREONOR_DATA_DIR': str(root / 'data'), 'STREONOR_PROFILES_DIR': str(root / 'profiles'),
+                'STREONOR_ICONS_DIR': str(icons),
+            })
             async with stdio_client(params) as (read, write):
                 async with ClientSession(read, write) as session:
                     await session.initialize()
@@ -157,4 +166,20 @@ class MCPTests(unittest.IsolatedAsyncioTestCase):
                     reordered = (await call('read_profile', profile=profile))[0]['profile']
                     self.assertEqual(reordered['Pages'], {'Current': profile, 'Pages': order})
                     self.assertEqual(reordered['Actions'], restored['Actions'])
+                    args = dict(profile=profile, name='Live layout', pages=[
+                        {'replace': True, 'controls': {
+                            '0,0': {'action_name': 'website', 'settings': {'path': 'https://layout.test'}},
+                            '1,0': {'action_name': 'Hotkey fixture', 'hotkey': 'Ctrl+P', 'auto_icon': False},
+                        }},
+                        {'page': page, 'controls': {'2,0': {'action_name': 'website', 'auto_icon': False}}},
+                    ])
+                    layout = (await call('preview_scene_layout', **args))[0]
+                    self.assertIn('3,0', layout['pages'][profile]['cleared'])
+                    stale = await session.call_tool('apply_scene_layout', {**args, 'expected_layout_sha256': '0' * 64})
+                    self.assertTrue(stale.isError)
+                    batch = (await call('apply_scene_layout', **args, expected_layout_sha256=layout['layout_sha256']))[0]
+                    self.assertEqual(set(batch['pages'][profile]['Actions']), {'0,0', '1,0'})
+                    self.assertEqual(set(batch['pages'][page]['Actions']), {'2,0'})
+                    self.assertEqual(batch['images'], 1)
+                    self.assertEqual((await call('read_profile', profile=profile))[0]['profile'], reordered)
                     self.assertEqual(set(tools), called, 'Every exposed MCP tool must be exercised')

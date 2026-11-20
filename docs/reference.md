@@ -118,12 +118,42 @@ MCP clients can show plain-language titles alongside the tool identifiers used b
 | `preview_control_restore`, `restore_controls` | Restore controls from a scoped MCP backup |
 | `preview_setting_change`, `apply_setting_change` | Guarded changes to existing settings |
 | `preview_action_change`, `apply_action_change` | Create, clone, configure, or remove actions, build flows, and manage icons |
+| `preview_scene_layout`, `apply_scene_layout` | Preview and import edits across existing pages as a named scene copy |
 
-Read the intended profile and page, preview the edit, then pass the returned hash to the matching apply tool. Every profile write creates a backup. The app must be closed for writes. the UI updates after reopening. Windows apply tools accept `manage_app=true` to handle closing and reopening. If the app stays in the tray, explicit `force_close=true` permits termination and may discard unsaved settings. A changed hash still blocks the edit. inspect and preview again. This is editing with an app restart, not live editing.
+Read the intended scene and page, preview the edit, then pass the returned hash to the matching apply tool. A stale hash requires a new preview. In-place writes create backups and require the app to close. On Windows, `manage_app=true` handles closing and reopening. If the app stays in the tray, `force_close=true` explicitly permits termination and may discard unsaved settings.
 
 Actions can be cloned from an existing same-page action or created with create_by_name from installed Toolbox metadata. configure_action replaces a slot's complete settings object. Creation alone does not verify plugin-specific runtime behavior. Knob settings are editable where present in the vendor profile. Scenes can be created, renamed and deleted using the scene tools. Page creation and deletion, live event streaming, and direct Toolbox invocation are pending. Unknown settings require the same JSON type as their existing value.
 
 Imported PNG/JPEG/BMP/GIF/WebP icons become exactly **1254 x 1254 pixels, 1:1, PNG**, with transparent padding, preserved proportions and no cropping. The first frame of animated inputs is used. Small source images are enlarged without adding detail. Original imported files are preserved. `prepare_icon` refuses to overwrite its output. Self-contained SVG icons are rendered to PNG. External resources, scripts and SVG text are rejected.
+
+## Edit while STREONOR stays open
+
+Live scene copies are an unreleased Windows feature verified with the S6 Mini and the default profile directory. STREONOR imports a new named scene and keeps running. Select the new scene in the app. Use the in-place workflow above to keep the original scene ID.
+
+For one change, preview normally and pass `live_scene_name` to `apply_action_change` or `apply_setting_change`. Use the returned profile ID for follow-up edits.
+
+For a full layout, pass `profile`, a unique `name`, and the same `pages` to `preview_scene_layout` and `apply_scene_layout`. Use the preview's `layout_sha256` as `expected_layout_sha256` when applying. This example replaces the main page with two controls and patches an existing control on another page.
+
+```json
+[
+  {
+    "replace": true,
+    "controls": {
+      "0,0": {"action_name": "com.hotspot.streamdock.system.website", "settings": {"path": "https://example.org"}},
+      "1,0": {"action_name": "com.hotspot.streamdock.system.hotkey", "hotkey": "Ctrl+Shift+M"}
+    }
+  },
+  {
+    "page": "SECOND-PAGE.sdProfile",
+    "controls": {
+      "0,0": {"settings": {"path": "https://example.com"}},
+      "1,0": null
+    }
+  }
+]
+```
+
+Omit `page` for the main page. The default preserves unlisted controls. Set `replace=true` to clear them. Use `action_name` or an installed action UUID to place a new control, settings to patch an existing one, `image_path` to choose a local icon, and `null` to remove a listed control. Scene copies do not inherit the source scene's automatic application switching rules.
 
 ## Optional HTTP and Windows executable
 

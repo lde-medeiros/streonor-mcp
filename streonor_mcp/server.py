@@ -8,14 +8,14 @@ import sys
 
 from mcp.server.fastmcp import FastMCP
 from . import profiles
-from . import scenes
+from . import scenes, layout, live
 from .app import edit_with_restart
 from .paths import data_dir
 from .locking import edit_lock
 from mcp.types import ToolAnnotations
 from .devices import DEVICES, describe
 
-mcp = FastMCP('STREONOR MCP', instructions='Inspect the target profile and preview before applying changes. Use returned hashes. Close the vendor app or explicitly request manage_app on Windows. Force closing may discard unsaved edits. Device support does not imply direct USB control. Assume users want matching icons when creating keys and shortcuts. Keep auto_icon enabled unless they explicitly request no icon. Use icon_query for the app or service name. resolve_icon searches local installed assets then generates a label fallback. Do not claim generated labels are official logos.')
+mcp = FastMCP('STREONOR MCP', instructions='Inspect the target profile and preview before applying changes. Use returned hashes. On Windows, use live_scene_name to import changes as a new scene while STREONOR runs. To edit an existing scene in place, close the app or explicitly request manage_app. Force closing may discard unsaved edits. Device support does not imply direct USB control. Assume users want matching icons when creating keys and shortcuts. Keep auto_icon enabled unless they explicitly request no icon. Use icon_query for the app or service name. resolve_icon searches local installed assets then generates a label fallback. Do not claim generated labels are official logos.')
 DATA = data_dir()
 
 @mcp.tool(annotations=ToolAnnotations(title='Search Local Icon Packs', readOnlyHint=True, destructiveHint=False, openWorldHint=False))
@@ -101,15 +101,23 @@ def preview_setting_change(profile: str, coordinate: str, setting: str, new_valu
     return profiles.prepare(profile, page or None, coordinate, setting, new_value, auto_icon=auto_icon, icon_query=icon_query)
 
 @mcp.tool(annotations=ToolAnnotations(title='Apply a Control Setting Edit', readOnlyHint=False, destructiveHint=True, openWorldHint=False))
-def apply_setting_change(profile: str, coordinate: str, setting: str, new_value: object, expected_sha256: str, page: str = '', manage_app: bool = False, force_close: bool = False, auto_icon: bool = True, icon_query: str = '', expected_auto_icon_sha256: str = '') -> dict:
-    """Apply a previewed setting edit with backup. manage_app=True closes and reopens STREONOR; force_close=True can discard unsaved app edits. A changed hash requires a new preview."""
+def apply_setting_change(profile: str, coordinate: str, setting: str, new_value: object, expected_sha256: str, page: str = '', manage_app: bool = False, force_close: bool = False, auto_icon: bool = True, icon_query: str = '', expected_auto_icon_sha256: str = '', live_scene_name: str = '') -> dict:
+    """Apply a previewed setting edit with backup. manage_app=True closes and reopens STREONOR; force_close=True can discard unsaved app edits. Use live_scene_name on Windows to import the edit into a new scene while STREONOR runs. A changed hash requires a new preview."""
     with edit_lock(profiles.ROOT):
         preview = profiles.prepare(profile, page or None, coordinate, setting, new_value, auto_icon=auto_icon, icon_query=icon_query)
         if preview['sha256'] != expected_sha256:
             raise ValueError('Profile changed since preview; inspect and preview again')
         if expected_auto_icon_sha256 and preview.get('auto_icon', {}).get('sha256') != expected_auto_icon_sha256:
             raise ValueError('Automatic icon changed since preview. Preview again')
-        return edit_with_restart(lambda: profiles.apply(profile, page or None, coordinate, setting, new_value, expected_sha256, auto_icon=auto_icon, icon_query=icon_query, expected_auto_icon_sha256=expected_auto_icon_sha256), manage_app, force_close)
+
+        def edit():
+            return profiles.apply(profile, page or None, coordinate, setting, new_value, expected_sha256, auto_icon=auto_icon, icon_query=icon_query, expected_auto_icon_sha256=expected_auto_icon_sha256, live_scene_name=live_scene_name)
+
+        if live_scene_name:
+            if manage_app or force_close:
+                raise ValueError('live_scene_name cannot be combined with app restart options')
+            return edit()
+        return edit_with_restart(edit, manage_app, force_close)
 
 
 
@@ -119,15 +127,23 @@ def preview_action_change(profile: str, operation: str, coordinate: str, source_
     return profiles.prepare_action(profile, page or None, operation, coordinate, source_coordinate, image_path, flow_steps=flow_steps, flow_title=flow_title, auto_icon=auto_icon, icon_query=icon_query, action_name=action_name, action_settings=action_settings, controller=controller, hotkey=hotkey, state_index=state_index)
 
 @mcp.tool(annotations=ToolAnnotations(title='Apply a Control or Flow Edit', readOnlyHint=False, destructiveHint=True, openWorldHint=False))
-def apply_action_change(profile: str, operation: str, coordinate: str, expected_sha256: str, source_coordinate: str = '', image_path: str = '', expected_image_sha256: str = '', page: str = '', manage_app: bool = False, force_close: bool = False, flow_steps: list[dict] | None = None, flow_title: str = '', auto_icon: bool = True, icon_query: str = '', expected_auto_icon_sha256: str = '', action_name: str = '', action_settings: dict | None = None, controller: str = 'Keypad', hotkey: str = '', state_index: int = 0) -> dict:
-    """Apply a previewed action/icon edit with backup. manage_app=True closes and reopens STREONOR. force_close=True can discard unsaved app edits. Imports become 1254 x 1254 PNG."""
+def apply_action_change(profile: str, operation: str, coordinate: str, expected_sha256: str, source_coordinate: str = '', image_path: str = '', expected_image_sha256: str = '', page: str = '', manage_app: bool = False, force_close: bool = False, flow_steps: list[dict] | None = None, flow_title: str = '', auto_icon: bool = True, icon_query: str = '', expected_auto_icon_sha256: str = '', action_name: str = '', action_settings: dict | None = None, controller: str = 'Keypad', hotkey: str = '', state_index: int = 0, live_scene_name: str = '') -> dict:
+    """Apply a previewed action/icon edit with backup. manage_app=True closes and reopens STREONOR. force_close=True can discard unsaved app edits. Use live_scene_name on Windows to import the edit into a new scene while STREONOR runs. Imported icons become 1254 x 1254 PNG."""
     with edit_lock(profiles.ROOT):
         preview = profiles.prepare_action(profile, page or None, operation, coordinate, source_coordinate, image_path, flow_steps=flow_steps, flow_title=flow_title, auto_icon=auto_icon, icon_query=icon_query, action_name=action_name, action_settings=action_settings, controller=controller, hotkey=hotkey, state_index=state_index)
         if preview['sha256'] != expected_sha256 or (operation in ('set_icon', 'use_existing_icon') and preview['image_sha256'] != expected_image_sha256):
             raise ValueError('Profile or icon changed since preview; inspect and preview again')
         if expected_auto_icon_sha256 and preview.get('auto_icon', {}).get('sha256') != expected_auto_icon_sha256:
             raise ValueError('Automatic icon changed since preview. Preview again')
-        return edit_with_restart(lambda: profiles.apply_action(profile, page or None, operation, coordinate, expected_sha256, source_coordinate, image_path, expected_image_sha256, flow_steps=flow_steps, flow_title=flow_title, auto_icon=auto_icon, icon_query=icon_query, expected_auto_icon_sha256=expected_auto_icon_sha256, action_name=action_name, action_settings=action_settings, controller=controller, hotkey=hotkey, state_index=state_index), manage_app, force_close)
+
+        def edit():
+            return profiles.apply_action(profile, page or None, operation, coordinate, expected_sha256, source_coordinate, image_path, expected_image_sha256, flow_steps=flow_steps, flow_title=flow_title, auto_icon=auto_icon, icon_query=icon_query, expected_auto_icon_sha256=expected_auto_icon_sha256, action_name=action_name, action_settings=action_settings, controller=controller, hotkey=hotkey, state_index=state_index, live_scene_name=live_scene_name)
+
+        if live_scene_name:
+            if manage_app or force_close:
+                raise ValueError('live_scene_name cannot be combined with app restart options')
+            return edit()
+        return edit_with_restart(edit, manage_app, force_close)
 
 
 @mcp.tool(annotations=ToolAnnotations(title='Preview Reordering Scene Pages', readOnlyHint=True, destructiveHint=False, openWorldHint=False))
@@ -165,6 +181,23 @@ def restore_controls(profile: str, backup_name: str, expected_sha256: str, expec
         if not preview['changed_coordinates']:
             return {'updated': False, 'new_sha256': expected_sha256}
         return edit_with_restart(lambda: profiles.restore_controls(profile, page, backup_name, expected_sha256, expected_backup_sha256), manage_app, force_close)
+
+
+@mcp.tool(annotations=ToolAnnotations(title='Preview a Page or Scene Layout', readOnlyHint=True, destructiveHint=False, openWorldHint=False))
+def preview_scene_layout(profile: str, name: str, pages: list[layout.PageEdit]) -> dict:
+    """Preview a named copy with changes across existing pages. Each page uses its ID or an empty ID for the main page. Controls are keyed by coordinate. Supply action_name to create or replace a control, settings or an icon to edit an existing control, or null to remove it. Set replace=True to clear unlisted controls on a page."""
+    return layout.plan(profile, name, pages, profiles.ROOT)[0]
+
+
+@mcp.tool(annotations=ToolAnnotations(title='Import an Edited Scene Without Restarting', readOnlyHint=False, destructiveHint=False, idempotentHint=False, openWorldHint=False))
+def apply_scene_layout(profile: str, name: str, pages: list[layout.PageEdit], expected_layout_sha256: str) -> dict:
+    """Apply the exact previewed layout as a new scene in the running Windows STREONOR app. Use the layout_sha256 from preview_scene_layout. The source scene remains available."""
+    with edit_lock(profiles.ROOT):
+        preview, edits, images = layout.plan(profile, name, pages, profiles.ROOT)
+        if preview['layout_sha256'] != expected_layout_sha256:
+            raise ValueError('Layout, source or icon changed since preview; preview again')
+        return live.import_scene(profile, profiles.ROOT, preview['name'], edits,
+                                 preview['source_hashes'], images)
 
 
 def token():

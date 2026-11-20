@@ -133,9 +133,12 @@ Some actions require plugin-specific settings, connections, or a compatible cont
 
 ## How changes work
 
-The agent reads the target, previews the change, and applies it using the returned hashes. STREONOR must close while its profiles are edited. On Windows, the agent can request `manage_app=true` to close and reopen it. Force closing additionally requires `force_close=true` and may discard unsaved app settings.
+The agent reads the target, previews the change, and applies it using the returned hashes.
 
-Scene deletion removes the scene from the app and retains its folder and catalog backup. Other profile edits retain manifest backups. Icons are saved as **1254 × 1254 square PNGs**. This release does not update the app live.
+- **Windows live scene copies (unreleased):** Update an action, setting, or icon while STREONOR stays open. Fill an entire page or edit several pages in one import. Open the new scene by its name in STREONOR. [Live editing workflow](docs/reference.md#edit-while-streonor-stays-open).
+- **Edit the same scene in place:** Close STREONOR first or request `manage_app=true` on Windows to close and reopen it. Use `force_close=true` only if you accept losing unsaved app settings.
+
+In-place edits retain backups. Scene deletion retains the scene folder and catalog backup. Icons are saved as **1254 × 1254 square PNGs**.
 
 ## Devices
 
@@ -158,7 +161,7 @@ Product photo links open the [STREONOR storefront’s](https://streonor.net/) im
 ## What's next
 
 - Create folders and pages, and move controls between pages.
-- Import and export native scene files.
+- Export native scene files and investigate in-place live editing.
 - Verify common Toolbox workflows and document additional device support with contributor testing.
 
 ## Project links

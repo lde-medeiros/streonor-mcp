@@ -123,8 +123,8 @@ def vendor_running():
 
 
 @serialized_profile_edit
-def apply(profile, page, coordinate, setting, new_value, expected_sha256, root=ROOT, backups=BACKUPS, auto_icon=True, icon_query='', expected_auto_icon_sha256=''):
-    if vendor_running():
+def apply(profile, page, coordinate, setting, new_value, expected_sha256, root=ROOT, backups=BACKUPS, auto_icon=True, icon_query='', expected_auto_icon_sha256='', live_scene_name=''):
+    if not live_scene_name and vendor_running():
         raise RuntimeError('Quit STREONOR completely before editing profiles; it can overwrite external changes.')
     preview = prepare(profile, page, coordinate, setting, new_value, root, auto_icon, icon_query)
     if preview['sha256'] != expected_sha256:
@@ -142,7 +142,7 @@ def apply(profile, page, coordinate, setting, new_value, expected_sha256, root=R
         icon_data, info = for_action(action, path.parent, icon_query or label_for_action(action))
         if expected_auto_icon_sha256 and info.get('sha256') != expected_auto_icon_sha256:
             raise ValueError('Automatic icon changed since preview; preview again')
-    return commit_edit(profile, page, coordinate, path, original, doc, expected_sha256, root, backups, icon_data)
+    return commit_edit(profile, page, coordinate, path, original, doc, expected_sha256, root, backups, icon_data, live_scene_name=live_scene_name)
 
 def read_icon(image_path):
     path = Path(image_path)
@@ -283,10 +283,10 @@ def prepare_action(profile, page, operation, coordinate, source_coordinate='', i
 
 
 @serialized_profile_edit
-def apply_action(profile, page, operation, coordinate, expected_sha256, source_coordinate='', image_path='', expected_image_sha256='', root=ROOT, backups=BACKUPS, flow_steps=None, flow_title='', auto_icon=True, icon_query='', expected_auto_icon_sha256='', action_name='', action_settings=None, controller='Keypad', hotkey='', state_index=0):
+def apply_action(profile, page, operation, coordinate, expected_sha256, source_coordinate='', image_path='', expected_image_sha256='', root=ROOT, backups=BACKUPS, flow_steps=None, flow_title='', auto_icon=True, icon_query='', expected_auto_icon_sha256='', action_name='', action_settings=None, controller='Keypad', hotkey='', state_index=0, live_scene_name=''):
     import copy
     import uuid
-    if vendor_running():
+    if not live_scene_name and vendor_running():
         raise RuntimeError('Quit STREONOR completely before editing profiles.')
     preview = prepare_action(profile, page, operation, coordinate, source_coordinate, image_path, root, flow_steps, flow_title, auto_icon, icon_query, action_name, action_settings, controller, hotkey, state_index)
     if preview['sha256'] != expected_sha256:
@@ -327,12 +327,12 @@ def apply_action(profile, page, operation, coordinate, expected_sha256, source_c
         icon_data, auto_info = for_action(actions[coordinate], path.parent, icon_query, image_path)
         if expected_auto_icon_sha256 and (auto_info or {}).get('sha256') != expected_auto_icon_sha256:
             raise ValueError('Automatic icon changed since preview; preview again')
-    result = commit_edit(profile, page, coordinate, path, original, doc, expected_sha256, root, backups, icon_data, state_index)
+    result = commit_edit(profile, page, coordinate, path, original, doc, expected_sha256, root, backups, icon_data, state_index, live_scene_name)
     result['auto_icon'] = auto_info
     return result
 
 
-def commit_edit(profile, page, coordinate, path, original, doc, expected_sha256, root, backups, icon_data=None, state_index=0):
+def commit_edit(profile, page, coordinate, path, original, doc, expected_sha256, root, backups, icon_data=None, state_index=0, live_scene_name=''):
     import uuid
     icon = None
     if icon_data is not None:
@@ -341,6 +341,10 @@ def commit_edit(profile, page, coordinate, path, original, doc, expected_sha256,
         if not action.get('States'):
             action['States'] = [{}]
         action['States'][state_index]['Image'] = icon
+    if live_scene_name:
+        from .live import import_copy
+        return import_copy(profile, page, path, doc, expected_sha256,
+                           root, live_scene_name, icon, icon_data)
     backups.mkdir(parents=True, exist_ok=True)
     backup = backups / f'{profile}--{page or profile}--{time.time_ns()}.json'
     with backup.open('xb') as f:
