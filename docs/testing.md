@@ -1,6 +1,6 @@
 # Validation
 
-The 0.5.0 test suite exercises all 15 exposed tools through a real stdio MCP session
+The 0.6.0 test suite exercises all 16 exposed tools through a real stdio MCP session
 against disposable profiles and image fixtures. Personal device configurations are not used.
 
 Coverage includes device/action/profile discovery, icon search and preparation, boot artwork,
@@ -9,7 +9,7 @@ of unrelated knob settings. Unit tests also cover app exit/relaunch failures, fo
 cross-process edit locking, output overwrite protection, orphan cleanup, bounded input,
 invalid JSON numbers, invalid tokens and duplicate/missing/incorrect HTTP authorization headers.
 
-All 27 tests passed locally on Windows Python 3.12 and Linux Python 3.12 under WSL.
+All 34 tests passed locally on Windows Python 3.12 and Linux Python 3.12 under WSL.
 Hosted Windows/macOS/Linux results are recorded in GitHub Actions, including Python 3.13.
 The dependency audit found no known advisories in the audited installed dependencies after
 upgrading the development environment's old pip. The unpublished project itself is not in
@@ -31,3 +31,12 @@ The Temp scene was read, renamed and deleted through MCP, retaining its full-fol
 SQLite catalog backup. Daily's GitHub icon was prepared with a black background and applied
 through the guarded icon tools. These observations verify saved configurations and app relaunch.
 Physical deletion/display behavior still needs the user's device check.
+
+## 0.6.0 checks
+
+Automatic-icon tests cover local SVG selection, contrast on a black background, preserved aspect
+ratio, fallback generation, opt-out and source preservation. Hotkey tests cover modifier isolation,
+unused native slots, invalid chords and step order. Name-based action creation and configuration
+are exercised over MCP. A read-only construction check produced native definitions for all 156
+installed Toolbox entries using each entry's declared controller and flow-only restrictions.
+That check did not execute those actions or establish hardware support for their controllers.

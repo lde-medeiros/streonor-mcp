@@ -24,13 +24,13 @@ The commands download STREONOR MCP and its Python dependencies automatically. Yo
 **Claude Code**
 
 ```sh
-claude mcp add --transport stdio --scope user streonor -- uvx --python 3.12 --from git+https://github.com/lde-medeiros/streonor-mcp@v0.5.0 streonor-mcp
+claude mcp add --transport stdio --scope user streonor -- uvx --python 3.12 --from git+https://github.com/lde-medeiros/streonor-mcp@v0.6.0 streonor-mcp
 ```
 
 **Codex**
 
 ```sh
-codex mcp add streonor -- uvx --python 3.12 --from git+https://github.com/lde-medeiros/streonor-mcp@v0.5.0 streonor-mcp
+codex mcp add streonor -- uvx --python 3.12 --from git+https://github.com/lde-medeiros/streonor-mcp@v0.6.0 streonor-mcp
 ```
 
 **Claude Desktop or another JSON client**
@@ -40,7 +40,7 @@ codex mcp add streonor -- uvx --python 3.12 --from git+https://github.com/lde-me
   "mcpServers": {
     "streonor": {
       "command": "uvx",
-      "args": ["--python", "3.12", "--from", "git+https://github.com/lde-medeiros/streonor-mcp@v0.5.0", "streonor-mcp"]
+      "args": ["--python", "3.12", "--from", "git+https://github.com/lde-medeiros/streonor-mcp@v0.6.0", "streonor-mcp"]
     }
   }
 }
@@ -48,19 +48,37 @@ codex mcp add streonor -- uvx --python 3.12 --from git+https://github.com/lde-me
 
 Merge the entry into your existing configuration, then reload the MCP connection. If the client cannot find `uvx`, use its absolute path. STREONOR's own app is still needed to operate the device.
 
-## What can I ask it to do?
+## Everyday examples
 
-> “Create a scene called Work using Daily's GitHub button and volume knob.”
+**Create a work setup**
 
-> “Make this button open VS Code and then Windows Terminal.”
+> “Make a Work scene with buttons for my email, calendar and GitHub. Copy my volume knob from Daily.”
 
-> “Add these logos to my website buttons. Give GitHub a black background.”
+> “Add a Calculator button in the empty top-right position.”
 
-> “Rename Temp to Testing, then delete it when we're finished.”
+**Check your setup**
 
-> “Remove this knob assignment and delete the test flow.”
+> “Show me what each Work button and knob does before changing anything.”
 
-See [examples](docs/examples.md) for the MCP steps behind each request and [capabilities](docs/capabilities.md) for supported operations.
+**Update a shortcut**
+
+> “Change the GitHub button to open my project's issues page. Keep its black background.”
+
+> “Make Start Coding open VS Code, wait half a second, then open Terminal.”
+
+**Build a hotkey sequence**
+
+> “Make a button that copies the selected text, switches to the previous app, and pastes it. Add a short pause between steps.”
+
+**Remove what you no longer use**
+
+> “Remove the test flow and its knob assignment. Leave my volume knob alone.”
+
+> “Delete the Weekend scene. Keep a backup.”
+
+New shortcuts get matching icons by default. MCP checks installed app images and icon packs first. If no match is available, it creates a simple label icon. You do not need to ask for an icon separately. You can supply your own image or ask for no icon.
+
+See [everyday workflows](docs/examples.md) for what the agent does behind these requests.
 
 ## How changes work
 
@@ -72,7 +90,7 @@ Scene deletion removes the scene from the app and retains its folder and catalog
 
 - **Windows:** S6 Mini profiles, app restart and hardware behavior tested.
 - **macOS/Linux:** MCP, image tools and exported-profile editing tested in CI. Native device operation and app restart are unverified or unsupported. Configure profile paths when needed.
-- Action flows use existing action templates. Selected controls can be copied into a new scene.
+- Installed Toolbox actions can be added by name or UUID. Some still need a URL, file path, plugin connection or other settings before they work. Name-based creation does not mean every plugin has been execution-tested. Selected controls can be copied into a new scene.
 - Direct USB control, firmware updates, boot-logo uploading, page management and live device events are not implemented.
 
 [Tool and configuration reference](docs/reference.md) · [Examples](docs/examples.md) · [Capability coverage](docs/capabilities.md) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) · [Changelog](CHANGELOG.md)

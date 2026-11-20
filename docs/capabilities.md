@@ -16,6 +16,9 @@ names with actual tool discovery and fails if an exposed tool is missing coverag
 | Boot artwork preparation | Registry dimensions. PNG output | Unit and protocol fixtures |
 | Scene creation from selected controls | New profile, optional copied actions/icons and SQLite catalog row | Protocol fixture, empty-actions check, registration and duplicate rejection |
 | Scene rename/delete | Hash-checked name changes and catalog removal with folder archival | Protocol CRUD tests |
+| Name-based Toolbox slots | Installed metadata, controller checks and explicit configuration status | Protocol and catalog construction checks |
+| Multi-step hotkeys | Per-step chords and delays | Modifier, slot, order and protocol tests |
+| Automatic icons | Local app/pack matching with a generated label fallback | SVG contrast, fallback, opt-out and protocol tests |
 | Solid icon backgrounds | Optional RGB fill and edge-connected background replacement | Pixel/color regression test |
 | App close/reopen | Windows only, explicit forced exit option | Unit failure cases and prior Windows integration checks |
 | Backups/stale-write prevention | Manifest/catalog snapshots and hashes | Unit and protocol fixtures |
@@ -32,5 +35,4 @@ requires the observed vendor catalog schema. unknown schemas fail closed. macOS/
 and automatic app lifecycle are not verified. A sequence requests actions in order but cannot
 guarantee that an app has finished loading before the next action starts.
 
-Templates must already exist on the source page. This server does not synthesize unknown action
-schemas from the installed action-name catalog. Whole-app feature parity is not claimed.
+Installed actions can be constructed from their name or UUID using native metadata. Unknown plugin settings are not invented. Actions without a published settings schema still require native-app verification. Existing source templates remain supported. Whole-app execution parity is not claimed.

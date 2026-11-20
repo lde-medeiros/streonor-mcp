@@ -92,7 +92,7 @@ def list_profiles(root=ROOT):
     return result
 
 
-def prepare(profile, page, coordinate, setting, new_value, root=ROOT):
+def prepare(profile, page, coordinate, setting, new_value, root=ROOT, auto_icon=True, icon_query=''):
     doc, digest = read_manifest(profile, page, root)
     action = doc['Actions'].get(coordinate)
     if not isinstance(action, dict):
@@ -104,7 +104,14 @@ def prepare(profile, page, coordinate, setting, new_value, root=ROOT):
     if type(old) is not type(new_value):
         raise ValueError('New value must have the same JSON type as the existing value')
     json.dumps(new_value, allow_nan=False)
-    return {'profile': profile, 'page': page, 'coordinate': coordinate, 'action': action.get('Name'), 'uuid': action.get('UUID'), 'setting': setting, 'old_value': old, 'new_value': new_value, 'sha256': digest}
+    result = {'profile': profile, 'page': page, 'coordinate': coordinate, 'action': action.get('Name'), 'uuid': action.get('UUID'), 'setting': setting, 'old_value': old, 'new_value': new_value, 'sha256': digest}
+    if auto_icon and setting in ('path', 'appId') and old != new_value:
+        import copy
+        from .icons import for_action, label_for_action
+        future = copy.deepcopy(action)
+        future['Settings'][setting] = new_value
+        _, result['auto_icon'] = for_action(future, profile_path(profile, page, root).parent, icon_query or label_for_action(future))
+    return result
 
 
 def vendor_running():
@@ -116,10 +123,10 @@ def vendor_running():
 
 
 @serialized_profile_edit
-def apply(profile, page, coordinate, setting, new_value, expected_sha256, root=ROOT, backups=BACKUPS):
+def apply(profile, page, coordinate, setting, new_value, expected_sha256, root=ROOT, backups=BACKUPS, auto_icon=True, icon_query='', expected_auto_icon_sha256=''):
     if vendor_running():
         raise RuntimeError('Quit STREONOR completely before editing profiles; it can overwrite external changes.')
-    preview = prepare(profile, page, coordinate, setting, new_value, root)
+    preview = prepare(profile, page, coordinate, setting, new_value, root, auto_icon, icon_query)
     if preview['sha256'] != expected_sha256:
         raise ValueError('Profile changed since preview; inspect and preview again')
     path = profile_path(profile, page, root)
@@ -128,35 +135,21 @@ def apply(profile, page, coordinate, setting, new_value, expected_sha256, root=R
         raise ValueError('Profile changed while preparing edit')
     doc = parse_manifest(original)
     doc['Actions'][coordinate]['Settings'][setting] = new_value
-    encoded = (json.dumps(doc, indent=4, ensure_ascii=False, allow_nan=False) + '\n').encode('utf-8')
-    if len(encoded) > MAX_MANIFEST_BYTES:
-        raise ValueError('Updated manifest exceeds the 32 MiB limit')
-    backups.mkdir(parents=True, exist_ok=True)
-    backup = backups / f'{profile}-{time.time_ns()}.json'
-    with backup.open('xb') as f:
-        f.write(original)
-        f.flush()
-        os.fsync(f.fileno())
-    temp = None
-    try:
-        with tempfile.NamedTemporaryFile(dir=path.parent, prefix='.streonor-mcp-', delete=False) as f:
-            temp = Path(f.name)
-            f.write(encoded)
-            f.flush()
-            os.fsync(f.fileno())
-        if profile_path(profile, page, root) != path or vendor_running() or fingerprint(read_bounded(path, MAX_MANIFEST_BYTES)) != expected_sha256:
-            raise RuntimeError('STREONOR started or the profile changed during the edit; no change was applied.')
-        os.replace(temp, path)
-        temp = None
-    finally:
-        if temp:
-            temp.unlink(missing_ok=True)
-    return {'updated': True, 'backup': str(backup), 'new_sha256': fingerprint(encoded), 'reopen_app': True}
-
+    icon_data = None
+    if auto_icon and setting in ('path', 'appId') and preview['old_value'] != new_value:
+        from .icons import for_action, label_for_action
+        action = doc['Actions'][coordinate]
+        icon_data, info = for_action(action, path.parent, icon_query or label_for_action(action))
+        if expected_auto_icon_sha256 and info.get('sha256') != expected_auto_icon_sha256:
+            raise ValueError('Automatic icon changed since preview; preview again')
+    return commit_edit(profile, page, coordinate, path, original, doc, expected_sha256, root, backups, icon_data)
 
 def read_icon(image_path):
     path = Path(image_path)
     data = read_bounded(path, 16 * 1024 * 1024)
+    if path.suffix.lower() == '.svg':
+        from .svg import render
+        data = render(data)
     with warnings.catch_warnings():
         warnings.simplefilter('error', Image.DecompressionBombWarning)
         with Image.open(io.BytesIO(data)) as image:
@@ -216,15 +209,26 @@ def prepare_boot_logo(device_id, image_path, output_path):
     return {'path': str(output), 'device': spec.id, 'width': spec.boot_logo_size[0], 'height': spec.boot_logo_size[1], 'format': 'PNG', 'device_written': False}
 
 
-def prepare_action(profile, page, operation, coordinate, source_coordinate='', image_path='', root=ROOT, flow_steps=None, flow_title=''):
+def prepare_action(profile, page, operation, coordinate, source_coordinate='', image_path='', root=ROOT, flow_steps=None, flow_title='', auto_icon=True, icon_query='', action_name='', action_settings=None, controller='Keypad'):
     doc, digest = read_manifest(profile, page, root)
     actions = doc['Actions']
     if not re.fullmatch(r'\d+,\d+', coordinate):
         raise ValueError('Coordinate must use the app format, for example 0,0')
     before = actions.get(coordinate)
-    if operation == 'set_flow':
+    if operation == 'create_by_name':
+        if before is not None:
+            raise ValueError('Destination already has an action. Remove it explicitly first')
+        from .catalog import build_action
+        source, metadata = build_action(action_name, action_settings, controller)
+        detail = {'action': source['Name'], **metadata}
+    elif operation == 'configure_action':
+        if not isinstance(before, dict) or not isinstance(action_settings, dict):
+            raise ValueError('Choose an existing action and provide action_settings')
+        json.dumps(action_settings, allow_nan=False)
+        detail = {'action': before.get('Name'), 'old_settings': before.get('Settings'), 'new_settings': action_settings, 'configuration_note': 'Plugin validates settings at runtime'}
+    elif operation == 'set_flow':
         flow = build_flow(actions, coordinate, flow_steps, flow_title)
-        detail = {'replaces': before.get('Name') if before else None, 'title': flow_title, 'steps': [{'source': step['source_coordinate'], 'action': child['Name'], 'delay_ms': child['Settings']['delay']} for step, child in zip(flow_steps, flow['Actions'])]}
+        detail = {'replaces': before.get('Name') if before else None, 'title': flow_title, 'steps': [{'source': step.get('source_coordinate') or step.get('action_name'), 'action': child['Name'], 'delay_ms': child['Settings']['delay']} for step, child in zip(flow_steps, flow['Actions'])]}
     elif operation in ('clone', 'create_from_template'):
         if before is not None:
             raise ValueError('Destination already has an action; remove it explicitly first')
@@ -253,17 +257,21 @@ def prepare_action(profile, page, operation, coordinate, source_coordinate='', i
             image = read_icon(image_path)
             detail.update(image_path=image_path, image_sha256=fingerprint(image), width=1254, height=1254, format='PNG')
     else:
-        raise ValueError('Operation must be clone, create_from_template, remove, set_icon, use_existing_icon, clear_icon, or set_flow')
+        raise ValueError('Operation must be clone, create_from_template, remove, set_icon, use_existing_icon, clear_icon, set_flow, create_by_name or configure_action')
+    if (auto_icon or image_path) and operation in ('clone', 'create_from_template', 'create_by_name', 'set_flow'):
+        from .icons import for_action
+        candidate = flow if operation == 'set_flow' else source
+        _, detail['auto_icon'] = for_action(candidate, profile_path(profile, page, root).parent, icon_query, image_path)
     return {'profile': profile, 'page': page, 'coordinate': coordinate, 'operation': operation, 'sha256': digest, **detail}
 
 
 @serialized_profile_edit
-def apply_action(profile, page, operation, coordinate, expected_sha256, source_coordinate='', image_path='', expected_image_sha256='', root=ROOT, backups=BACKUPS, flow_steps=None, flow_title=''):
+def apply_action(profile, page, operation, coordinate, expected_sha256, source_coordinate='', image_path='', expected_image_sha256='', root=ROOT, backups=BACKUPS, flow_steps=None, flow_title='', auto_icon=True, icon_query='', expected_auto_icon_sha256='', action_name='', action_settings=None, controller='Keypad'):
     import copy
     import uuid
     if vendor_running():
         raise RuntimeError('Quit STREONOR completely before editing profiles.')
-    preview = prepare_action(profile, page, operation, coordinate, source_coordinate, image_path, root, flow_steps, flow_title)
+    preview = prepare_action(profile, page, operation, coordinate, source_coordinate, image_path, root, flow_steps, flow_title, auto_icon, icon_query, action_name, action_settings, controller)
     if preview['sha256'] != expected_sha256:
         raise ValueError('Profile changed since preview; inspect and preview again')
     if operation in ('set_icon', 'use_existing_icon') and preview['image_sha256'] != expected_image_sha256:
@@ -276,7 +284,12 @@ def apply_action(profile, page, operation, coordinate, expected_sha256, source_c
     actions = doc['Actions']
     icon = None
     icon_data = None
-    if operation == 'set_flow':
+    if operation == 'create_by_name':
+        from .catalog import build_action
+        actions[coordinate], _ = build_action(action_name, action_settings, controller)
+    elif operation == 'configure_action':
+        actions[coordinate]['Settings'] = copy.deepcopy(action_settings)
+    elif operation == 'set_flow':
         actions[coordinate] = build_flow(actions, coordinate, flow_steps, flow_title)
     elif operation in ('clone', 'create_from_template'):
         action = copy.deepcopy(actions[source_coordinate])
@@ -291,8 +304,26 @@ def apply_action(profile, page, operation, coordinate, expected_sha256, source_c
         if fingerprint(source_data) != expected_image_sha256:
             raise ValueError('Icon changed while preparing edit')
         icon_data = normalize_icon(source_data)
+    auto_info = None
+    if (auto_icon or image_path) and operation in ('clone', 'create_from_template', 'create_by_name', 'set_flow'):
+        from .icons import for_action
+        icon_data, auto_info = for_action(actions[coordinate], path.parent, icon_query, image_path)
+        if expected_auto_icon_sha256 and (auto_info or {}).get('sha256') != expected_auto_icon_sha256:
+            raise ValueError('Automatic icon changed since preview; preview again')
+    result = commit_edit(profile, page, coordinate, path, original, doc, expected_sha256, root, backups, icon_data)
+    result['auto_icon'] = auto_info
+    return result
+
+
+def commit_edit(profile, page, coordinate, path, original, doc, expected_sha256, root, backups, icon_data=None):
+    import uuid
+    icon = None
+    if icon_data is not None:
         icon = uuid.uuid4().hex.upper() + '.png'
-        actions[coordinate]['States'][0]['Image'] = icon
+        action = doc['Actions'][coordinate]
+        if not action.get('States'):
+            action['States'] = [{}]
+        action['States'][0]['Image'] = icon
     backups.mkdir(parents=True, exist_ok=True)
     backup = backups / f'{profile}-{time.time_ns()}.json'
     with backup.open('xb') as f:
@@ -346,7 +377,7 @@ def list_installed_actions():
                 for action in manifest.get('Actions', []):
                     if not isinstance(action, dict) or not action.get('UUID'):
                         continue
-                    found[action['UUID']] = {'uuid': action['UUID'], 'name': action.get('Name'), 'plugin': manifest.get('Name'), 'category': manifest.get('Category'), 'controllers': action.get('Controllers'), 'description': action.get('Tooltip')}
+                    found[action['UUID']] = {'uuid': action['UUID'], 'name': action.get('Name'), 'plugin': manifest.get('Name'), 'category': manifest.get('Category'), 'controllers': action.get('Controllers'), 'description': action.get('Tooltip'), 'default_settings': action.get('Settings', action.get('DefaultSettings', {})), 'states': action.get('States', []), 'supported_in_flows': action.get('SupportedInMultiActions'), 'only_in_flows': bool(action.get('OnlySupportedInMultiActions'))}
             except (OSError, ValueError, TypeError):
                 continue
     return sorted(found.values(), key=lambda action: (action['name'] or '').lower())
@@ -361,7 +392,7 @@ def find_icons(query, limit=50):
     matches = []
     for path in root.rglob('*'):
         if path.is_file() and path.suffix.lower() in ('.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp', '.svg') and query.casefold() in path.stem.casefold():
-            matches.append({'name': path.stem, 'path': str(path), 'supported': path.suffix.lower() != '.svg'})
+            matches.append({'name': path.stem, 'path': str(path), 'supported': True})
             if len(matches) >= limit:
                 break
     return matches

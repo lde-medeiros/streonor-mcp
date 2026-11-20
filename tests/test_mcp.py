@@ -33,7 +33,7 @@ class MCPTests(unittest.IsolatedAsyncioTestCase):
             Image.new('RGB', (8, 8), 'blue').save(icons / 'test.png')
             plugin = root / 'plugins' / 'fixture.sdPlugin'
             plugin.mkdir(parents=True)
-            (plugin / 'manifest.json').write_text(json.dumps({'Name': 'Fixture', 'Actions': [{'Name': 'Website', 'UUID': 'website'}]}))
+            (plugin / 'manifest.json').write_text(json.dumps({'Name': 'Fixture', 'Actions': [{'Name': 'Website', 'UUID': 'website'}, {'Name': 'Hotkey fixture', 'UUID': 'com.hotspot.streamdock.system.hotkey', 'Controllers': ['Keypad', 'Knob']}]}))
             # Process lifecycle is simulated; never close or edit the user's app.
             params = StdioServerParameters(command=sys.executable, args=['-c', 'from streonor_mcp import profiles, server; profiles.vendor_running = lambda: False; server.main()'], env={'STREONOR_DATA_DIR': str(root / 'data'), 'STREONOR_PROFILES_DIR': str(root / 'profiles'), 'STREONOR_ICONS_DIR': str(icons)})
             async with stdio_client(params) as (read, write):
@@ -52,6 +52,11 @@ class MCPTests(unittest.IsolatedAsyncioTestCase):
                     self.assertTrue(await call('list_available_actions'))
                     self.assertEqual((await call('list_profiles'))[0]['name'], 'Fixture')
                     self.assertTrue(await call('find_icons', query='test'))
+                    resolved = (await call('resolve_icon', query='test'))[0]
+                    self.assertEqual(resolved['origin'], 'installed')
+                    self.assertTrue(Path(resolved['path']).exists())
+                    generated = (await call('resolve_icon', query='Unlisted Service'))[0]
+                    self.assertEqual(generated['origin'], 'generated_label')
                     self.assertEqual((await call('prepare_icon', image_path=str(source), output_path=str(output)))[0]['width'], 1254)
                     await call('prepare_boot_logo', device_id='streonor-s6-mini', image_path=str(source), output_path=str(root / 'boot.png'))
                     with Image.open(output) as image:
@@ -99,4 +104,18 @@ class MCPTests(unittest.IsolatedAsyncioTestCase):
                     self.assertEqual(set(doc['Actions']), set(selected))
                     self.assertEqual(doc['Actions']['3,0']['Settings'], manifest['Actions']['3,0']['Settings'])
                     self.assertNotEqual(doc['Actions']['0,0']['ActionID'], manifest['Actions']['0,0'].get('ActionID'))
+                    args = dict(profile=profile, operation='create_by_name', coordinate='2,0', action_name='website', action_settings={'path': 'https://github.com'}, icon_query='GitHub')
+                    c = (await call('preview_action_change', **args))[0]
+                    self.assertFalse(c['execution_verified'])
+                    await call('apply_action_change', **args, expected_sha256=c['sha256'], expected_auto_icon_sha256=c['auto_icon']['sha256'])
+                    doc = (await call('read_profile', profile=profile))[0]['profile']
+                    self.assertTrue(doc['Actions']['2,0']['States'][0]['Image'].endswith('.png'))
+                    args = dict(profile=profile, operation='configure_action', coordinate='2,0', action_settings={'path': 'https://github.com/issues'})
+                    c = (await call('preview_action_change', **args))[0]
+                    await call('apply_action_change', **args, expected_sha256=c['sha256'])
+                    args = dict(profile=profile, operation='set_flow', coordinate='2,1', flow_title='Copy and paste', flow_steps=[{'action_name': 'com.hotspot.streamdock.system.hotkey', 'hotkey': 'Ctrl+C'}, {'action_name': 'com.hotspot.streamdock.system.hotkey', 'hotkey': 'Ctrl+V', 'delay_ms': 250}])
+                    c = (await call('preview_action_change', **args))[0]
+                    await call('apply_action_change', **args, expected_sha256=c['sha256'])
+                    doc = (await call('read_profile', profile=profile))[0]['profile']
+                    self.assertEqual([a['Settings']['Hotkeys'][0]['VKeyCode'] for a in doc['Actions']['2,1']['Actions']], [67, 86])
                     self.assertEqual(set(tools), called, 'Every exposed MCP tool must be exercised')
