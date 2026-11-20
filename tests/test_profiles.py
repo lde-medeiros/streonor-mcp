@@ -64,7 +64,11 @@ class ProfileTests(unittest.TestCase):
             c = profiles.prepare_action(self.profile, None, 'use_existing_icon', '1,1', image_path=str(imgdir / 'imported.png'), root=self.root)
             profiles.apply_action(self.profile, None, 'use_existing_icon', '1,1', c['sha256'], image_path=str(imgdir / 'imported.png'), expected_image_sha256=c['image_sha256'], root=self.root, backups=self.backups)
         action = json.loads(self.path.read_text())['Actions']['1,1']
-        self.assertEqual(action['States'][0]['Image'], 'imported.png')
+        with Image.open(imgdir / action['States'][0]['Image']) as normalized:
+            self.assertEqual(normalized.size, (1254, 1254))
+            self.assertEqual(normalized.format, 'PNG')
+        with Image.open(imgdir / 'imported.png') as original:
+            self.assertEqual(original.size, (12, 8))
         self.assertNotEqual(action['ActionID'], self.original['Actions']['0,0'].get('ActionID'))
 
     def test_boot_logo_preparation(self):
@@ -77,6 +81,24 @@ class ProfileTests(unittest.TestCase):
         with Image.open(out) as image:
             self.assertEqual(image.size, (320, 240))
         self.assertFalse(result['device_written'])
+
+    def test_square_icon_padding_and_output_protection(self):
+        from PIL import Image
+        src = Path(self.temp.name) / 'wide.png'
+        out = Path(self.temp.name) / 'square.png'
+        Image.new('RGBA', (20, 10), (255, 0, 0, 128)).save(src)
+        profiles.prepare_icon(str(src), str(out))
+        with Image.open(out) as image:
+            self.assertEqual(image.size, (1254, 1254))
+            self.assertEqual(image.format, 'PNG')
+            self.assertEqual(image.getpixel((0, 0))[3], 0)
+            self.assertEqual(image.getpixel((627, 627)), (255, 0, 0, 128))
+        before = out.read_bytes()
+        with self.assertRaises(FileExistsError):
+            profiles.prepare_icon(str(src), str(out))
+        self.assertEqual(out.read_bytes(), before)
+        with self.assertRaises(ValueError):
+            profiles.prepare_icon(str(src), str(out.with_suffix('.jpg')))
 
     def test_invalid_inputs(self):
         with self.assertRaises(ValueError):

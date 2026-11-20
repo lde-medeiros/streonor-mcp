@@ -9,11 +9,13 @@ import shutil
 import subprocess
 import tempfile
 import time
+import sys
 from PIL import Image, ImageOps
 from .devices import DEVICES, get_device
+from .paths import profiles_dir, data_dir, icons_dir, vendor_dir
 
-ROOT = Path(os.environ.get('APPDATA', '')) / 'HotSpot' / 'StreamDock' / 'profiles'
-BACKUPS = Path(os.environ.get('LOCALAPPDATA', str(Path.home()))) / 'STREONOR-MCP' / 'backups'
+ROOT = profiles_dir()
+BACKUPS = data_dir() / 'backups'
 PROFILE_ID = re.compile(r'^[A-Za-z0-9-]+\.sdProfile$')
 
 
@@ -70,6 +72,9 @@ def prepare(profile, page, coordinate, setting, new_value, root=ROOT):
 
 
 def vendor_running():
+    if sys.platform != 'win32':
+        result = subprocess.run(['ps', '-axo', 'comm='], capture_output=True, text=True, timeout=5, check=True)
+        return any(Path(line.strip()).name.casefold() in ('streonor', 'streonor.exe', 'streamdock', 'streamdock.exe') for line in result.stdout.splitlines())
     result = subprocess.run(['tasklist', '/FI', 'IMAGENAME eq Streonor.exe', '/NH'], capture_output=True, text=True, timeout=5, creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0), check=True)
     return 'streonor.exe' in result.stdout.lower()
 
@@ -122,6 +127,31 @@ def read_icon(image_path):
             raise ValueError('Use a PNG, JPEG, BMP, GIF, or WebP icon')
         image.verify()
     return data
+
+
+def normalize_icon(data):
+    """Preserve the whole first frame and alpha while enforcing the icon canvas."""
+    with Image.open(io.BytesIO(data)) as source:
+        image = ImageOps.exif_transpose(source).convert('RGBA')
+        image = ImageOps.contain(image, (1254, 1254), Image.Resampling.LANCZOS)
+        canvas = Image.new('RGBA', (1254, 1254), (0, 0, 0, 0))
+        canvas.alpha_composite(image, ((1254-image.width)//2, (1254-image.height)//2))
+        output = io.BytesIO()
+        canvas.save(output, format='PNG')
+        return output.getvalue()
+
+
+def prepare_icon(image_path, output_path):
+    """Create a square PNG without changing profiles or device storage."""
+    output = Path(output_path).expanduser().resolve()
+    if output.suffix.lower() != '.png':
+        raise ValueError('Icon output must use the .png extension')
+    data = normalize_icon(read_icon(image_path))
+    output.parent.mkdir(parents=True, exist_ok=True)
+    # Exclusive creation prevents accidentally overwriting a user's source image.
+    with output.open('xb') as f:
+        f.write(data)
+    return {'path': str(output), 'width': 1254, 'height': 1254, 'format': 'PNG', 'sha256': fingerprint(data)}
 
 
 def prepare_boot_logo(device_id, image_path, output_path):
@@ -182,7 +212,7 @@ def prepare_action(profile, page, operation, coordinate, source_coordinate='', i
                 if candidate.parent != image_dir.resolve() or candidate.suffix.lower() != '.png':
                     raise ValueError('Existing icon must be a PNG in this profile image folder')
             image = read_icon(image_path)
-            detail.update(image_path=image_path, image_sha256=fingerprint(image))
+            detail.update(image_path=image_path, image_sha256=fingerprint(image), width=1254, height=1254, format='PNG')
     else:
         raise ValueError('Operation must be clone, create_from_template, remove, set_icon, use_existing_icon, or clear_icon')
     return {'profile': profile, 'page': page, 'coordinate': coordinate, 'operation': operation, 'sha256': digest, **detail}
@@ -214,21 +244,11 @@ def apply_action(profile, page, operation, coordinate, expected_sha256, source_c
         del actions[coordinate]
     elif operation == 'clear_icon':
         actions[coordinate]['States'][0]['Image'] = ''
-    elif operation == 'use_existing_icon':
-        if fingerprint(read_icon(image_path)) != expected_image_sha256:
-            raise ValueError('Icon changed while preparing edit')
-        actions[coordinate]['States'][0]['Image'] = Path(image_path).name
     else:
         source_data = read_icon(image_path)
         if fingerprint(source_data) != expected_image_sha256:
             raise ValueError('Icon changed while preparing edit')
-        with Image.open(io.BytesIO(source_data)) as source:
-            source.seek(0)
-            image = ImageOps.exif_transpose(source).convert('RGBA')
-            image.thumbnail((1024, 1024))
-            output = io.BytesIO()
-            image.save(output, format='PNG')
-            icon_data = output.getvalue()
+        icon_data = normalize_icon(source_data)
         icon = uuid.uuid4().hex.upper() + '.png'
         actions[coordinate]['States'][0]['Image'] = icon
     backups.mkdir(parents=True, exist_ok=True)
@@ -265,8 +285,9 @@ def apply_action(profile, page, operation, coordinate, expected_sha256, source_c
 
 
 def list_installed_actions():
-    roots = [Path(os.environ.get('ProgramFiles(x86)', r'C:\Program Files (x86)')) / 'Streonor' / 'plugins',
-             Path(os.environ.get('APPDATA', '')) / 'HotSpot' / 'StreamDock' / 'plugins']
+    roots = [vendor_dir() / 'plugins']
+    if sys.platform == 'win32':
+        roots.insert(0, Path(os.environ.get('ProgramFiles(x86)', r'C:\Program Files (x86)')) / 'Streonor' / 'plugins')
     found = {}
     for root in roots:
         for path in sorted(root.glob('*.sdPlugin/manifest.json')):
@@ -286,7 +307,7 @@ def find_icons(query, limit=50):
         raise ValueError('Enter a non-empty icon search term')
     if not 1 <= limit <= 100:
         raise ValueError('Limit must be between 1 and 100')
-    root = Path(os.environ.get('APPDATA', '')) / 'HotSpot' / 'StreamDock' / 'icons'
+    root = icons_dir()
     matches = []
     for path in root.rglob('*'):
         if path.is_file() and path.suffix.lower() in ('.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp', '.svg') and query.casefold() in path.stem.casefold():
