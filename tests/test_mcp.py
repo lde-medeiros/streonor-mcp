@@ -85,4 +85,18 @@ class MCPTests(unittest.IsolatedAsyncioTestCase):
                         self.assertEqual(db.execute('SELECT COUNT(*) FROM StreonorS6 WHERE Profile=?', (created['profile'],)).fetchone()[0], 1)
                     duplicate = await session.call_tool('preview_scene_creation', {'source_profile': profile, 'name': 'Temp'})
                     self.assertTrue(duplicate.isError)
+                    change = (await call('preview_scene_change', profile=created['profile'], operation='rename', new_name='Renamed'))[0]
+                    await call('apply_scene_change', profile=created['profile'], operation='rename', new_name='Renamed', expected_sha256=change['sha256'], expected_registry_sha256=change['registry_sha256'])
+                    self.assertEqual((await call('read_profile', profile=created['profile']))[0]['profile']['Name'], 'Renamed')
+                    change = (await call('preview_scene_change', profile=created['profile'], operation='delete'))[0]
+                    deleted = (await call('apply_scene_change', profile=created['profile'], operation='delete', expected_sha256=change['sha256'], expected_registry_sha256=change['registry_sha256']))[0]
+                    self.assertTrue(Path(deleted['scene_archive']).is_dir())
+                    self.assertFalse((root / 'profiles' / created['profile']).exists())
+                    selected = ['0,0', '3,0']
+                    scene = (await call('preview_scene_creation', source_profile=profile, name='Work', include_coordinates=selected))[0]
+                    copied = (await call('create_scene', source_profile=profile, name='Work', include_coordinates=selected, expected_source_sha256=scene['source_sha256'], expected_registry_sha256=scene['registry_sha256']))[0]
+                    doc = (await call('read_profile', profile=copied['profile']))[0]['profile']
+                    self.assertEqual(set(doc['Actions']), set(selected))
+                    self.assertEqual(doc['Actions']['3,0']['Settings'], manifest['Actions']['3,0']['Settings'])
+                    self.assertNotEqual(doc['Actions']['0,0']['ActionID'], manifest['Actions']['0,0'].get('ActionID'))
                     self.assertEqual(set(tools), called, 'Every exposed MCP tool must be exercised')

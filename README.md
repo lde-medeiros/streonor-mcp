@@ -1,122 +1,78 @@
 # STREONOR MCP
 
-An MCP server for managing STREONOR profiles, actions and icons from Claude, Codex and other MCP clients.
+Control STREONOR profiles from Claude, Codex and other MCP clients.
 
-- Inspect profiles and installed actions.
-- Update key and knob settings with preview checks and automatic backups.
-- Add, remove and clone actions from existing templates.
-- Build ordered action flows and create blank scenes.
-- Prepare square PNG icons and device-sized boot artwork.
+Create scenes, build button flows, change knob settings, and add icons using natural-language requests. Changes are previewed and backed up before they are saved. This is a community project, not an official STREONOR integration.
 
-**Device support:** S6 Mini on Windows. Profile and image tools also run on macOS and Linux. This is a community project, not an official STREONOR integration.
+## Devices
 
-## Installation
+| Device | Model | MCP support |
+| --- | --- | --- |
+| <img src="https://streonor.net/cdn/shop/files/3.jpg?v=1777519053&amp;width=280" alt="STREONOR S6 Mini" width="140"> | **S6 Mini** | Supported and tested on Windows |
+| <img src="https://streonor.net/cdn/shop/files/S10_2.jpg?v=1777519449&amp;width=280" alt="STREONOR S10 Pro" width="140"> | S10 Pro | Not supported yet |
+| <img src="https://streonor.net/cdn/shop/files/S15_2.jpg?v=1776650324&amp;width=280" alt="STREONOR S15 Standard" width="140"> | S15 Standard | Not supported yet |
+| <img src="https://streonor.net/cdn/shop/files/32_-2.jpg?v=1794382927&amp;width=280" alt="STREONOR S32 Max" width="140"> | S32 Max | Not supported yet |
 
-Use `uvx` to fetch the server, a compatible Python runtime and its dependencies automatically. No manual clone, virtual environment or `pip install` is required. The MCP client must be able to run [uv](https://docs.astral.sh/uv/getting-started/installation/). The Git source requires Git and access to this private repository; it will work for other users after the repository is published.
+Product images and model names: [STREONOR](https://streonor.net/). Images belong to their respective owner. Listing a model does not imply hardware compatibility.
 
-### Claude Code
+## Get started
+
+First, install the STREONOR app and connect your device. Then add this MCP connection to your AI app. You can ask your coding assistant to run the matching command below for you.
+
+The commands download STREONOR MCP and its Python dependencies automatically. You need [uv](https://docs.astral.sh/uv/getting-started/installation/) and Git available to your client. No manual clone, virtual environment or pip setup is needed. GitHub access is required while this repository is private.
+
+**Claude Code**
 
 ```sh
-claude mcp add --transport stdio --scope user streonor -- uvx --python 3.12 --from git+https://github.com/lde-medeiros/streonor-mcp@v0.4.0 streonor-mcp
+claude mcp add --transport stdio --scope user streonor -- uvx --python 3.12 --from git+https://github.com/lde-medeiros/streonor-mcp@v0.5.0 streonor-mcp
 ```
 
-### Codex
+**Codex**
 
 ```sh
-codex mcp add streonor -- uvx --python 3.12 --from git+https://github.com/lde-medeiros/streonor-mcp@v0.4.0 streonor-mcp
+codex mcp add streonor -- uvx --python 3.12 --from git+https://github.com/lde-medeiros/streonor-mcp@v0.5.0 streonor-mcp
 ```
 
-### Claude Desktop and other JSON clients
-
-Merge this entry into your MCP configuration:
+**Claude Desktop or another JSON client**
 
 ```json
 {
   "mcpServers": {
     "streonor": {
       "command": "uvx",
-      "args": [
-        "--python", "3.12",
-        "--from", "git+https://github.com/lde-medeiros/streonor-mcp@v0.4.0",
-        "streonor-mcp"
-      ]
+      "args": ["--python", "3.12", "--from", "git+https://github.com/lde-medeiros/streonor-mcp@v0.5.0", "streonor-mcp"]
     }
   }
 }
 ```
 
-Reload the MCP connection after adding it. If the client cannot find `uvx`, use its absolute path. Pinning the release tag avoids an unexpected upgrade when the client starts. See [uv tool sources](https://docs.astral.sh/uv/guides/tools/) for installation and caching behavior.
+Merge the entry into your existing configuration, then reload the MCP connection. If the client cannot find `uvx`, use its absolute path. STREONOR's own app is still needed to operate the device.
 
-The default stdio connection needs no port, token or background service. HTTP remains optional. STREONOR's own app is still required for Windows device operation; MCP does not install or replace the vendor software.
+## What can I ask it to do?
 
-## Usage
+> “Create a scene called Work using Daily's GitHub button and volume knob.”
 
-Try these prompts:
+> “Make this button open VS Code and then Windows Terminal.”
 
-> List my STREONOR profiles and inspect Development.
+> “Add these logos to my website buttons. Give GitHub a black background.”
 
-> Change Development's Coolify icon to this PNG. Preview the change, back up the profile, and close and reopen STREONOR for the edit.
+> “Rename Temp to Testing, then delete it when we're finished.”
 
-> Inspect the knobs in Development and preview a change to an existing setting.
+> “Remove this knob assignment and delete the test flow.”
 
-The server checks that the profile and source image still match the preview before writing. It serializes cooperating editors, backs up the preceding manifest, and refuses to write while the vendor app is running. On Windows, `manage_app=true` allows the apply tools to close and reopen the app. `force_close=true` additionally permits termination and can discard unsaved app settings.
+See [examples](docs/examples.md) for the MCP steps behind each request and [capabilities](docs/capabilities.md) for supported operations.
 
-## Tools
+## How changes work
 
-| Tool | Description |
-| --- | --- |
-| `list_supported_devices` | List known models and verified capabilities |
-| `list_available_actions` | List installed plugin action types |
-| `list_profiles` | List profiles and pages |
-| `read_profile` | Read actions, settings and the profile hash |
-| `preview_scene_creation` | Preview a blank scene and check its vendor catalog |
-| `create_scene` | Create and register a previewed scene with a catalog backup |
-| `find_icons` | Search imported icon packs |
-| `prepare_icon` | Create a 1254 x 1254 PNG with transparent padding |
-| `prepare_boot_logo` | Prepare artwork at the model's registered dimensions |
-| `preview_setting_change` | Preview an existing action setting change |
-| `apply_setting_change` | Apply a setting change with a hash check and backup |
-| `preview_action_change` | Preview cloning, removal or icon changes |
-| `apply_action_change` | Apply an action or icon change with a backup |
+The agent reads the target, previews the change, and applies it using the returned hashes. STREONOR must close while its profiles are edited. On Windows, the agent can request `manage_app=true` to close and reopen it. Force closing additionally requires `force_close=true` and may discard unsaved app settings.
 
-## Compatibility
+Scene deletion removes the scene from the app and retains its folder and catalog backup. Other profile edits retain manifest backups. Icons are saved as **1254 × 1254 square PNGs**. This release does not update the app live.
 
-| Feature | Windows | macOS / Linux |
-| --- | --- | --- |
-| MCP, image preparation and exported profile edits | Supported | Supported |
-| Vendor profile discovery | Verified | Configure paths |
-| Vendor app restart | Supported | Not implemented |
-| S6 Mini hardware | Verified | Not verified |
+## Platforms and limits
 
-Only the S6 Mini is hardware-verified. S10 Pro, S15 Standard and S32 Max remain listed as unsupported. This server does not provide direct USB control, firmware updates, boot-logo uploads, page management, arbitrary Toolbox execution or live device event streaming. Edits appear after the vendor app reloads its profile; this is not live editing.
+- **Windows:** S6 Mini profiles, app restart and hardware behavior tested.
+- **macOS/Linux:** MCP, image tools and exported-profile editing tested in CI. Native device operation and app restart are unverified or unsupported. Configure profile paths when needed.
+- Action flows use existing action templates. Selected controls can be copied into a new scene.
+- Direct USB control, firmware updates, boot-logo uploading, page management and live device events are not implemented.
 
-## Configuration
-
-Windows profiles are discovered from the installed app. Set these variables in the MCP client's server environment when using another installation or exported profiles:
-
-| Variable | Purpose |
-| --- | --- |
-| `STREONOR_PROFILES_DIR` | Directory containing `*.sdProfile` folders |
-| `STREONOR_ICONS_DIR` | Imported icon packs |
-| `STREONOR_DATA_DIR` | Backups, HTTP token and logs |
-
-Use a local exported copy if the vendor app runs on another OS. Local process checks cannot detect a remote app writing a shared profile. Paths, optional HTTP setup, development installation and Windows builds are covered in the [reference](docs/reference.md).
-
-## Development
-
-```sh
-python -m pip install -e .
-python -m unittest discover -s tests
-```
-
-Tests exercise every MCP tool against disposable fixtures. App lifecycle tests are simulated; they do not certify new hardware. CI covers Windows, macOS and Linux with Python 3.12/3.13.
-
-See [Contributing](CONTRIBUTING.md), [Security](SECURITY.md) and [Changelog](CHANGELOG.md). Device definitions live in `streonor_mcp/devices.py`.
-
-### Ordered flows and scenes
-
-Use `preview_action_change` with `operation="set_flow"`, `flow_title` and `flow_steps`. Each step specifies a same-page `source_coordinate`, optional `settings` overrides matching existing names/types, and `delay_ms` from 0 to 60000. Apply with the same arguments and the preview hash. This replaces the target action in one guarded write. Application launches are requested in order; completion/loading is not awaited.
-
-`preview_scene_creation(source_profile, name)` returns source/catalog hashes. Pass them to `create_scene` to create a blank scene for that device. The observed single-column `Profile` catalog schema is required. Existing scene names are rejected. The app must be closed, or explicitly managed on Windows. A new scene does not inherit automatic app associations. Source profiles are not changed.
-
-See the [capability coverage](docs/capabilities.md) for implemented, tested and unsupported features.
+[Tool and configuration reference](docs/reference.md) · [Examples](docs/examples.md) · [Capability coverage](docs/capabilities.md) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) · [Changelog](CHANGELOG.md)

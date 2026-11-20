@@ -100,6 +100,18 @@ class ProfileTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             profiles.prepare_icon(str(src), str(out.with_suffix('.jpg')))
 
+    def test_black_icon_background_preserves_foreground(self):
+        from PIL import Image
+        src = Path(self.temp.name) / 'gray.png'
+        out = Path(self.temp.name) / 'black.png'
+        image = Image.new('RGB', (100, 100), '#202020')
+        image.paste('white', (25, 25, 75, 75))
+        image.save(src)
+        profiles.prepare_icon(str(src), str(out), '#000000', True)
+        with Image.open(out) as converted:
+            self.assertEqual(converted.getpixel((0, 0)), (0, 0, 0, 255))
+            self.assertEqual(converted.getpixel((627, 627)), (255, 255, 255, 255))
+
     def test_invalid_inputs(self):
         with self.assertRaises(ValueError):
             profiles.profile_path('../other.sdProfile', root=self.root)

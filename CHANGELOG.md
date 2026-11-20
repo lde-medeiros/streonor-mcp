@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.0
+
+- Scene rename/delete with catalog checks and full-folder archival.
+- Create scenes from selected existing buttons, knobs and flows. copy PNG assets.
+- Optional solid icon backgrounds and connected edge-background replacement.
+- Simple README with official device images and support table. task-based examples.
+- Protocol coverage for all 15 tools and scene/flow CRUD.
+
 ## 0.4.0
 
 - Native ordered Multi Action flows built from same-page action templates.
@@ -11,7 +19,7 @@
 - Release-pinned uvx setup for Claude, Codex and JSON clients.
 - Cross-process edit locks and preflight validation before closing the vendor app.
 - Bounded input reads, image pixel limits and strict JSON numbers.
-- Atomic, non-overwriting image output; uncommitted icon cleanup.
+- Atomic, non-overwriting image output. uncommitted icon cleanup.
 - Fail-closed token validation and duplicate Authorization header rejection.
 - Protocol tests covering all tools plus HTTP and concurrent-editor regression tests.
 

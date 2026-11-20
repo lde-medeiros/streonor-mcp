@@ -21,4 +21,4 @@ while the repository remains private. No Python environment or dependencies need
 
 This does not establish hardware support on macOS/Linux, eliminate races with noncooperating
 file writers, or guarantee recovery from disk failure. The S6 Windows key/icon checks were
-observed in the preceding development session; lifecycle failure cases in CI are simulated.
+observed in the preceding development session. lifecycle failure cases in CI are simulated.
