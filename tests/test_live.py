@@ -32,3 +32,21 @@ class LiveArchiveTests(unittest.TestCase):
                 self.assertEqual(archive.read('profiles/nested.sdProfile/Images/old.gif'), b'old')
             self.assertEqual(json.loads((folder / 'manifest.json').read_bytes()), {'Actions': {}})
             self.assertFalse((folder / 'Images').exists())
+
+
+class InPlaceIconTests(unittest.TestCase):
+    def test_verifies_the_icon_and_preserves_scene_identity_and_settings(self):
+        import copy
+        from streonor_mcp.live_ui import _only_icon_changed
+
+        source = {
+            'Name': 'Gaming',
+            'Actions': {'4,1': {'Controller': 'Knob', 'States': [{'Image': ''}],
+                                'Settings': {'ProfileUUID': 'other-scene'}}},
+        }
+        saved = copy.deepcopy(source)
+        saved['Actions']['4,1']['Controller'] = ''
+        saved['Actions']['4,1']['States'][0]['Image'] = 'icon.png'
+        self.assertTrue(_only_icon_changed(source, saved, '4,1', 'icon.png'))
+        saved['Actions']['4,1']['Settings']['ProfileUUID'] = 'changed'
+        self.assertFalse(_only_icon_changed(source, saved, '4,1', 'icon.png'))

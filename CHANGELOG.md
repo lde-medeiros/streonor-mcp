@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Change the selected S6 Mini scene’s Scene Shift icon in place through the running Windows app. The scene ID and name are preserved.
+
 - Import an edited scene copy with its pages and icons while STREONOR stays open on Windows.
 - Preview a full layout and import edits across multiple pages in one step. Create, replace, configure, or remove controls and choose which pages to rebuild. Include Action Flows and target individual icon states.
 

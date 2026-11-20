@@ -128,7 +128,9 @@ Imported PNG/JPEG/BMP/GIF/WebP icons become exactly **1254 x 1254 pixels, 1:1, P
 
 ## Edit while STREONOR stays open
 
-Live scene copies are an unreleased Windows feature verified with the S6 Mini and the default profile directory. STREONOR imports a new named scene and keeps running. Select the new scene in the app. Use the in-place workflow above to keep the original scene ID.
+Two live workflows are available on the unreleased branch. For an in-place change, install the Windows `live` extra (`pip install -e ".[live]"` from the checkout). With STREONOR visible and the intended S6 Mini scene selected, preview `set_icon` at `4,1` and pass `live_in_place=true` to `apply_action_change`. This works for the Scene Shift control on a single-page scene. The MCP uses STREONOR’s icon picker, saves a manifest backup, and verifies the original scene ID, settings, and image after the app saves.
+
+Live scene copies are verified with the S6 Mini and the default profile directory. STREONOR imports a new named scene and keeps running. Select the new scene in the app. For other changes that must keep the original scene ID, use the guarded restart workflow.
 
 For one change, preview normally and pass `live_scene_name` to `apply_action_change` or `apply_setting_change`. Use the returned profile ID for follow-up edits.
 
