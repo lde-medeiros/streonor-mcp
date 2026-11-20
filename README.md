@@ -2,15 +2,14 @@
 
 <p align="center">
   <strong>Set up your STREONOR stream controller from Claude or Codex.</strong><br>
-  A local Model Context Protocol server for scenes, shortcuts, knobs, and icons.<br>
-  S6 Mini hardware verified on Windows · Python 3.12+
+  A local Model Context Protocol server for scenes, shortcuts, knobs, and icons.
 </p>
 
 <p align="center">
   <a href="#highlights">Highlights</a> ·
   <a href="#get-started">Get started</a> ·
   <a href="#everyday-examples">Examples</a> ·
-  <a href="#what-you-see-in-streonor">Gallery</a> ·
+  <a href="#available-actions">Actions</a> ·
   <a href="#devices">Devices</a> ·
   <a href="#whats-next">What’s next</a> ·
   <a href="CONTRIBUTING.md">Contribute</a>
@@ -90,19 +89,47 @@ New shortcuts get matching icons by default. MCP checks installed app images and
 
 See [everyday workflows](docs/examples.md) for what the agent does behind these requests.
 
-## What you see in STREONOR
+## Available actions
 
-See STREONOR’s [official setup guides](https://streonor.net/pages/download) for the native scene editor, key settings, and device controls.
+The MCP can create actions from the Toolbox plugins installed on your computer using their name or UUID. The following actions were discovered in one installation. Your list depends on the plugins you have installed. Use `list_available_actions` to see your current choices.
 
-### Icons and boot artwork produced by MCP
+Some actions require plugin-specific settings, connections, or a compatible controller. Creation does not verify that every action executes successfully. Create Folder must be configured in the STREONOR app.
 
-These label icons are sample MCP outputs for Calendar, Start Coding, and Focus.
-
-![Three generated shortcut icons labeled Calendar, Start Coding, and Focus](docs/images/shortcut-icons.png)
-
-This 320 × 240 S6 Mini boot image uses black padding to preserve the full artwork. Apply it under **Setting → Device → Replace the boot logo**.
-
-![Prepared S6 Mini boot artwork with a Work Bench title and black padding](docs/images/s6-boot-artwork.png)
+| Plugin | Action types |
+| --- | --- |
+| Brightness | Brightness, devsleep |
+| Browser | Back, Collect, Forward, Refresh |
+| Calendario | Calendario |
+| close | Close |
+| ETS2 Hotkey | Boosting Speed, Cruise Control, Double Flashing Light, Downshift, Flashing Headlights, Handbrake, Headlight, High Beam, Horns, Ignition/Shutdown, Left Turn Signal, Reduce Speed, Right Turn Signal, Upshift, Windshield Wiper |
+| Go back | Go back |
+| Hotkey | Hotkey |
+| HotkeySwitch | HotkeySwitch |
+| K1ProLEDLight | LED-, LED+, LEDMODECHANGE, LEDSPEED-, LEDSPEED+, WinqMac |
+| KnobOperatingGroup | KnobOperatingGroup |
+| Mouse event | Mouse event |
+| Multi Action | Delay, Multi Action, Multi Action ActionTrigger, Multi Action ActionWheel, Multi Action LunBo, Multi Action Toggle |
+| Multimedia | Multimedia, SystemVolume |
+| musicalrhythm | 图谱1, 图谱2, 图谱3, 图谱4, 图谱5 |
+| Network | UDP |
+| OBS Studio | Audio Mixer, Record, Scene, Screenshot, Source Visibility, Stream, Studio Mode, Transition, Virtual camera, 绿幕背景图 DN, 绿幕背景图 UP |
+| OBS Tool | Browser Source, CPU Usage, Dropped Frames, Filter Switch, Image Settings, Input Monitor Settings, Input Mute Toggle, Input Volume, Input Volume Control, Input Volume Settings, Instant Replay, Next Scene, Previous Scene, Remote Recording Start/Stop/Pause, Remote Streaming Start/Stop, Scene Switcher, Set Profile, Set Scene Collection, Set Transition, Source Animation, Source Visibility, Studio Mode Toggle, Video Playback, Virtual Camera |
+| Open | Open, OpenApps |
+| Pages | change page, Go to page, Next page, Page Indicator, Previous page |
+| Password | Password |
+| Quick Control | Calculator, Control panel, Display desktop, Emoticons, Home page, Increase the volume, Lower the volume, Mail, Microphone, Music, Mute, Notification, Search bar, Sleep, Speech recognition, Switch screen, Task Manager |
+| Scene Shift | Scene Shift |
+| Soundboard | Play Audio, Stop Audio |
+| Super Hotkeys | Super Hotkeys |
+| Text | Text |
+| Time Options | Countdown, Timer, World Time |
+| Touchbar | Decrease screen brightness, Desktop Saver, Dictation, Dispatch Center, DND Mode, Fast Forward, Fast Rewind, Focus On Search, Increase screen brightness, Input Method, Launchpad, Mute, Next Track, Notification Center, Play/Pause, Previous Track, Screen brightness, Screen Lock, Screenshot, Show Desktop, Siri, Sleep, Volume, Volume down, Volume up |
+| Useful notes | Record to-do, Remember things |
+| Visual Studio Code | Change Language, Create Terminal, Execute Command, Execute Terminal Command, Insert Snippet, Open Folder |
+| vMix | Shortcut |
+| Weather query | Weather query |
+| Website | Website |
+| YouTube | Chat Message, Viewers |
 
 ## How changes work
 
