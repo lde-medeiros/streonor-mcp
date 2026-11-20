@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.7.0
+
+- Preview and reorder existing pages while preserving the current selection.
+- Preview and restore controls from a backup scoped to the original scene and page.
+- Prepare boot artwork with a choice of crop or black padding for the Devices menu.
+- Route Create Folder to the native app so generic action creation cannot leave a broken folder button.
+- Add readable titles for all 20 MCP tools and direct creation of single-key hotkey shortcuts.
+- Keep valid Toolbox actions discoverable when installed plugin manifests contain malformed entries.
+- Refresh the README, device-photo links, contributor links, and tool reference. Add a gallery of MCP output.
+- License the independent project under MIT.
+- Add issue templates for bugs and device support.
+
 ## 0.6.0
 
 - Default icons for new actions and flows, plus destination changes.
@@ -13,7 +25,7 @@
 - Scene rename/delete with catalog checks and full-folder archival.
 - Create scenes from selected existing buttons, knobs and flows. copy PNG assets.
 - Optional solid icon backgrounds and connected edge-background replacement.
-- Simple README with official device images and support table. task-based examples.
+- Simple README with official device-photo links and support table. task-based examples.
 - Protocol coverage for all 15 tools and scene/flow CRUD.
 
 ## 0.4.0

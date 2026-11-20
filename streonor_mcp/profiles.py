@@ -190,37 +190,51 @@ def prepare_icon(image_path, output_path, background_color='', replace_edge_back
     return {'path': str(output), 'width': 1254, 'height': 1254, 'format': 'PNG', 'sha256': fingerprint(data)}
 
 
-def prepare_boot_logo(device_id, image_path, output_path):
+def prepare_boot_logo(device_id, image_path, output_path, fit="cover"):
     """Prepare an image using model metadata. This never writes device storage."""
     spec = get_device(device_id)
     if not spec.supported:
         raise ValueError(f'{spec.name} is listed but not yet supported')
     if not spec.boot_logo_size:
         raise ValueError(f'{spec.name} has no registered boot-logo dimensions')
+    if fit not in ('cover', 'contain'):
+        raise ValueError('Boot artwork fit must be cover or contain')
     data = read_icon(image_path)
     output = Path(output_path).expanduser().resolve()
     if output.suffix.lower() != '.png':
         raise ValueError('Boot logo output must use the .png extension')
     with Image.open(io.BytesIO(data)) as source:
-        image = ImageOps.fit(ImageOps.exif_transpose(source).convert('RGB'), spec.boot_logo_size, method=Image.Resampling.LANCZOS)
+        source = ImageOps.exif_transpose(source).convert('RGBA')
+        image = Image.new('RGBA', source.size, 'black')
+        image.alpha_composite(source)
+        image = image.convert('RGB')
+        if fit == 'cover':
+            image = ImageOps.fit(image, spec.boot_logo_size, method=Image.Resampling.LANCZOS)
+        else:
+            image = ImageOps.pad(image, spec.boot_logo_size, method=Image.Resampling.LANCZOS, color='black')
         buffer = io.BytesIO()
         image.save(buffer, format='PNG')
-        write_new_file(output, buffer.getvalue())
-    return {'path': str(output), 'device': spec.id, 'width': spec.boot_logo_size[0], 'height': spec.boot_logo_size[1], 'format': 'PNG', 'device_written': False}
+        encoded = buffer.getvalue()
+        write_new_file(output, encoded)
+    return {'path': str(output), 'sha256': fingerprint(encoded), 'fit': fit, 'device': spec.id, 'width': spec.boot_logo_size[0], 'height': spec.boot_logo_size[1], 'format': 'PNG', 'device_written': False}
 
 
-def prepare_action(profile, page, operation, coordinate, source_coordinate='', image_path='', root=ROOT, flow_steps=None, flow_title='', auto_icon=True, icon_query='', action_name='', action_settings=None, controller='Keypad'):
+def prepare_action(profile, page, operation, coordinate, source_coordinate='', image_path='', root=ROOT, flow_steps=None, flow_title='', auto_icon=True, icon_query='', action_name='', action_settings=None, controller='Keypad', hotkey=''):
     doc, digest = read_manifest(profile, page, root)
     actions = doc['Actions']
     if not re.fullmatch(r'\d+,\d+', coordinate):
         raise ValueError('Coordinate must use the app format, for example 0,0')
     before = actions.get(coordinate)
+    if hotkey and operation != 'create_by_name':
+        raise ValueError('Use hotkey with create_by_name for an installed Hotkey action')
     if operation == 'create_by_name':
         if before is not None:
             raise ValueError('Destination already has an action. Remove it explicitly first')
         from .catalog import build_action
-        source, metadata = build_action(action_name, action_settings, controller)
+        source, metadata = build_action(action_name, action_settings, controller, hotkey=hotkey)
         detail = {'action': source['Name'], **metadata}
+        if hotkey:
+            detail['hotkey'] = hotkey
     elif operation == 'configure_action':
         if not isinstance(before, dict) or not isinstance(action_settings, dict):
             raise ValueError('Choose an existing action and provide action_settings')
@@ -266,12 +280,12 @@ def prepare_action(profile, page, operation, coordinate, source_coordinate='', i
 
 
 @serialized_profile_edit
-def apply_action(profile, page, operation, coordinate, expected_sha256, source_coordinate='', image_path='', expected_image_sha256='', root=ROOT, backups=BACKUPS, flow_steps=None, flow_title='', auto_icon=True, icon_query='', expected_auto_icon_sha256='', action_name='', action_settings=None, controller='Keypad'):
+def apply_action(profile, page, operation, coordinate, expected_sha256, source_coordinate='', image_path='', expected_image_sha256='', root=ROOT, backups=BACKUPS, flow_steps=None, flow_title='', auto_icon=True, icon_query='', expected_auto_icon_sha256='', action_name='', action_settings=None, controller='Keypad', hotkey=''):
     import copy
     import uuid
     if vendor_running():
         raise RuntimeError('Quit STREONOR completely before editing profiles.')
-    preview = prepare_action(profile, page, operation, coordinate, source_coordinate, image_path, root, flow_steps, flow_title, auto_icon, icon_query, action_name, action_settings, controller)
+    preview = prepare_action(profile, page, operation, coordinate, source_coordinate, image_path, root, flow_steps, flow_title, auto_icon, icon_query, action_name, action_settings, controller, hotkey)
     if preview['sha256'] != expected_sha256:
         raise ValueError('Profile changed since preview; inspect and preview again')
     if operation in ('set_icon', 'use_existing_icon') and preview['image_sha256'] != expected_image_sha256:
@@ -286,7 +300,7 @@ def apply_action(profile, page, operation, coordinate, expected_sha256, source_c
     icon_data = None
     if operation == 'create_by_name':
         from .catalog import build_action
-        actions[coordinate], _ = build_action(action_name, action_settings, controller)
+        actions[coordinate], _ = build_action(action_name, action_settings, controller, hotkey=hotkey)
     elif operation == 'configure_action':
         actions[coordinate]['Settings'] = copy.deepcopy(action_settings)
     elif operation == 'set_flow':
@@ -325,7 +339,7 @@ def commit_edit(profile, page, coordinate, path, original, doc, expected_sha256,
             action['States'] = [{}]
         action['States'][0]['Image'] = icon
     backups.mkdir(parents=True, exist_ok=True)
-    backup = backups / f'{profile}-{time.time_ns()}.json'
+    backup = backups / f'{profile}--{page or profile}--{time.time_ns()}.json'
     with backup.open('xb') as f:
         f.write(original)
         f.flush()
@@ -365,6 +379,79 @@ def commit_edit(profile, page, coordinate, path, original, doc, expected_sha256,
     return {'updated': True, 'backup': str(backup), 'new_sha256': fingerprint(encoded), 'icon': icon, 'reopen_app': True}
 
 
+
+def prepare_page_order(profile, page_order, root=ROOT):
+    path = profile_path(profile, root=root)
+    original = read_bounded(path, MAX_MANIFEST_BYTES)
+    doc = parse_manifest(original)
+    registry = doc.get('Pages')
+    existing = registry.get('Pages') if isinstance(registry, dict) else None
+    if (not isinstance(existing, list)
+            or any(not isinstance(page, str) or not PROFILE_ID.fullmatch(page) for page in existing)
+            or len(set(existing)) != len(existing)
+            or profile not in existing
+            or registry.get('Current') not in existing):
+        raise ValueError('Unrecognized scene page registry')
+    if len(page_order) != len(existing) or set(page_order) != set(existing):
+        raise ValueError('Page order must include every registered page exactly once')
+    for page in existing:
+        if not profile_path(profile, page, root).is_relative_to(path.parent):
+            raise ValueError('Registered page escapes its scene')
+    preview = {'profile': profile, 'old_order': existing, 'new_order': page_order,
+               'current_page': registry['Current'], 'sha256': fingerprint(original)}
+    registry['Pages'] = page_order
+    return preview, path, original, doc
+
+
+@serialized_profile_edit
+def reorder_pages(profile, page_order, expected_sha256, root=ROOT, backups=BACKUPS):
+    if vendor_running():
+        raise RuntimeError('Quit STREONOR completely before reordering pages')
+    preview, path, original, doc = prepare_page_order(profile, page_order, root)
+    if preview['sha256'] != expected_sha256:
+        raise ValueError('Scene changed since preview')
+    if preview['old_order'] == page_order:
+        return {'updated': False, 'new_sha256': expected_sha256}
+    return commit_edit(profile, None, None, path, original, doc, expected_sha256, root, backups)
+
+
+def prepare_restore(profile, page, backup_name, root=ROOT, backups=BACKUPS):
+    path = profile_path(profile, page, root)
+    target = page or profile
+    pattern = re.escape(f'{profile}--{target}--') + r'[0-9]+\.json'
+    if not re.fullmatch(pattern, backup_name):
+        raise ValueError('Choose a backup created for this exact scene and page')
+    backup = backups / backup_name
+    if backup.is_symlink() or not backup.is_file():
+        raise ValueError('Backup must be a regular file in the MCP backup directory')
+    saved = read_bounded(backup, MAX_MANIFEST_BYTES)
+    previous = parse_manifest(saved)
+    original = read_bounded(path, MAX_MANIFEST_BYTES)
+    current = parse_manifest(original)
+    if previous.get('DeviceUUID') != current.get('DeviceUUID'):
+        raise ValueError('Backup belongs to a different device')
+    changed = sorted(key for key in previous['Actions'].keys() | current['Actions'].keys()
+                     if previous['Actions'].get(key) != current['Actions'].get(key))
+    preview = {'profile': profile, 'page': page, 'backup_name': backup_name,
+               'sha256': fingerprint(original), 'backup_sha256': fingerprint(saved),
+               'changed_coordinates': changed}
+    current['Actions'] = previous['Actions']
+    return preview, path, original, current
+
+
+@serialized_profile_edit
+def restore_controls(profile, page, backup_name, expected_sha256, expected_backup_sha256,
+                     root=ROOT, backups=BACKUPS):
+    if vendor_running():
+        raise RuntimeError('Quit STREONOR completely before restoring controls')
+    preview, path, original, doc = prepare_restore(profile, page, backup_name, root, backups)
+    if (preview['sha256'], preview['backup_sha256']) != (expected_sha256, expected_backup_sha256):
+        raise ValueError('Scene or backup changed since preview')
+    if not preview['changed_coordinates']:
+        return {'updated': False, 'new_sha256': expected_sha256}
+    return commit_edit(profile, page, None, path, original, doc, expected_sha256, root, backups)
+
+
 def list_installed_actions():
     roots = [vendor_dir() / 'plugins']
     if sys.platform == 'win32':
@@ -374,12 +461,19 @@ def list_installed_actions():
         for path in sorted(root.glob('*.sdPlugin/manifest.json')):
             try:
                 manifest = json.loads(path.read_text(encoding='utf-8-sig'))
-                for action in manifest.get('Actions', []):
-                    if not isinstance(action, dict) or not action.get('UUID'):
-                        continue
-                    found[action['UUID']] = {'uuid': action['UUID'], 'name': action.get('Name'), 'plugin': manifest.get('Name'), 'category': manifest.get('Category'), 'controllers': action.get('Controllers'), 'description': action.get('Tooltip'), 'default_settings': action.get('Settings', action.get('DefaultSettings', {})), 'states': action.get('States', []), 'supported_in_flows': action.get('SupportedInMultiActions'), 'only_in_flows': bool(action.get('OnlySupportedInMultiActions'))}
-            except (OSError, ValueError, TypeError):
+            except (OSError, ValueError):
                 continue
+            if not isinstance(manifest, dict) or not isinstance(manifest.get('Actions'), list):
+                continue
+            plugin = manifest.get('Name')
+            for action in manifest['Actions']:
+                if not isinstance(action, dict):
+                    continue
+                uuid = action.get('UUID')
+                name = action.get('Name')
+                if not isinstance(uuid, str) or not uuid.strip() or (name is not None and not isinstance(name, str)):
+                    continue
+                found[uuid] = {'uuid': uuid, 'name': name, 'plugin': plugin if isinstance(plugin, str) else None, 'category': manifest.get('Category'), 'controllers': action.get('Controllers'), 'description': action.get('Tooltip'), 'default_settings': action.get('Settings', action.get('DefaultSettings', {})), 'states': action.get('States', []), 'supported_in_flows': action.get('SupportedInMultiActions'), 'only_in_flows': bool(action.get('OnlySupportedInMultiActions'))}
     return sorted(found.values(), key=lambda action: (action['name'] or '').lower())
 
 

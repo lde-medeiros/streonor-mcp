@@ -18,12 +18,12 @@ from .devices import DEVICES, describe
 mcp = FastMCP('STREONOR MCP', instructions='Inspect the target profile and preview before applying changes. Use returned hashes. Close the vendor app or explicitly request manage_app on Windows. Force closing may discard unsaved edits. Device support does not imply direct USB control. Assume users want matching icons when creating keys and shortcuts. Keep auto_icon enabled unless they explicitly request no icon. Use icon_query for the app or service name. resolve_icon searches local installed assets then generates a label fallback. Do not claim generated labels are official logos.')
 DATA = data_dir()
 
-@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, openWorldHint=False))
+@mcp.tool(annotations=ToolAnnotations(title='Search Local Icon Packs', readOnlyHint=True, destructiveHint=False, openWorldHint=False))
 def find_icons(query: str, limit: int = 50) -> list[dict]:
     """Search icon packs imported into STREONOR. Safe self-contained SVG icons can be rendered to PNG."""
     return profiles.find_icons(query, limit)
 
-@mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, openWorldHint=False))
+@mcp.tool(annotations=ToolAnnotations(title='Choose or Generate a Shortcut Icon', readOnlyHint=False, destructiveHint=False, openWorldHint=False))
 def resolve_icon(query: str, image_path: str = '') -> dict:
     """Prepare a matching 1254 PNG. Prefer an explicit image, then an exact installed icon match, otherwise generate a black label icon. No network requests. Return path, origin and hash for set_icon."""
     from .icons import resolve
@@ -36,43 +36,43 @@ def resolve_icon(query: str, image_path: str = '') -> dict:
             raise ValueError('Cached icon was modified')
     return {'path': str(path), 'width': 1254, 'height': 1254, 'format': 'PNG', **info}
 
-@mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=True, openWorldHint=False))
+@mcp.tool(annotations=ToolAnnotations(title='Convert an Image to a Shortcut Icon', readOnlyHint=False, destructiveHint=True, openWorldHint=False))
 def prepare_icon(image_path: str, output_path: str, background_color: str = '', replace_edge_background: bool = False) -> dict:
     """Create a square 1254 PNG; output must not exist. Optional #RRGGBB background flattens transparency. replace_edge_background replaces the top-left connected background with tolerance 24. Does not edit a profile."""
     return profiles.prepare_icon(image_path, output_path, background_color, replace_edge_background)
 
-@mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=True, openWorldHint=False))
-def prepare_boot_logo(device_id: str, image_path: str, output_path: str) -> dict:
-    """Prepare an image at the selected model's registered dimensions; does not write the device."""
-    return profiles.prepare_boot_logo(device_id, image_path, output_path)
+@mcp.tool(annotations=ToolAnnotations(title='Prepare Device Boot Artwork', readOnlyHint=False, destructiveHint=True, openWorldHint=False))
+def prepare_boot_logo(device_id: str, image_path: str, output_path: str, fit: str = 'cover') -> dict:
+    """Prepare a PNG for STREONOR's Devices menu. Cover crops to fill. Contain preserves the whole image with black padding. The device is unchanged."""
+    return profiles.prepare_boot_logo(device_id, image_path, output_path, fit)
 
-@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, openWorldHint=False))
+@mcp.tool(annotations=ToolAnnotations(title='List STREONOR Device Models', readOnlyHint=True, destructiveHint=False, openWorldHint=False))
 def list_supported_devices() -> list[dict]:
     """List models and known controls and logo specifications from the community registry."""
     return [describe(spec.id) for spec in DEVICES]
 
-@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, openWorldHint=False))
+@mcp.tool(annotations=ToolAnnotations(title='List Installed Toolbox Actions', readOnlyHint=True, destructiveHint=False, openWorldHint=False))
 def list_available_actions() -> list[dict]:
     """List action types from installed STREONOR plugin manifests, including Toolbox and dial actions."""
     return profiles.list_installed_actions()
 
-@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, openWorldHint=False))
+@mcp.tool(annotations=ToolAnnotations(title='List Saved Scenes', readOnlyHint=True, destructiveHint=False, openWorldHint=False))
 def list_profiles() -> list[dict]:
     """List STREONOR profiles and their device and page identifiers."""
     return profiles.list_profiles()
 
-@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, openWorldHint=False))
+@mcp.tool(annotations=ToolAnnotations(title='Inspect a Scene or Page', readOnlyHint=True, destructiveHint=False, openWorldHint=False))
 def read_profile(profile: str, page: str = '') -> dict:
     """Read a profile or page including its existing actions, settings, and content hash."""
     data, sha = profiles.read_manifest(profile, page or None)
     return {'profile': data, 'sha256': sha}
 
-@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, openWorldHint=False))
+@mcp.tool(annotations=ToolAnnotations(title='Preview a New Scene', readOnlyHint=True, destructiveHint=False, openWorldHint=False))
 def preview_scene_creation(source_profile: str, name: str, include_coordinates: list[str] | None = None) -> dict:
     """Preview a new scene for the source device. Optionally copy include_coordinates from the source (buttons, knobs, flows and PNG icons). Checks catalog and duplicate names."""
     return scenes.preview(source_profile, name, include_coordinates=include_coordinates)
 
-@mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=True, openWorldHint=False))
+@mcp.tool(annotations=ToolAnnotations(title='Create a Previewed Scene', readOnlyHint=False, destructiveHint=True, openWorldHint=False))
 def create_scene(source_profile: str, name: str, expected_source_sha256: str, expected_registry_sha256: str, manage_app: bool = False, force_close: bool = False, include_coordinates: list[str] | None = None) -> dict:
     """Create a previewed scene and register it in STREONOR, backing up its catalog. Optional include_coordinates copies selected source actions and PNG icons. Optionally close/reopen the Windows app."""
     with edit_lock(profiles.ROOT):
@@ -81,12 +81,12 @@ def create_scene(source_profile: str, name: str, expected_source_sha256: str, ex
             raise ValueError('Source or catalog changed; preview again')
         return edit_with_restart(lambda: scenes.create(source_profile, name, expected_source_sha256, expected_registry_sha256, include_coordinates=include_coordinates), manage_app, force_close)
 
-@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, openWorldHint=False))
+@mcp.tool(annotations=ToolAnnotations(title='Preview a Scene Rename or Deletion', readOnlyHint=True, destructiveHint=False, openWorldHint=False))
 def preview_scene_change(profile: str, operation: str, new_name: str = '') -> dict:
     """Preview renaming or deleting a registered scene. Last-scene deletion is refused."""
     return scenes.preview_change(profile, operation, new_name)
 
-@mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=True, openWorldHint=False))
+@mcp.tool(annotations=ToolAnnotations(title='Apply a Scene Rename or Deletion', readOnlyHint=False, destructiveHint=True, openWorldHint=False))
 def apply_scene_change(profile: str, operation: str, expected_sha256: str, expected_registry_sha256: str, new_name: str = '', manage_app: bool = False, force_close: bool = False) -> dict:
     """Rename/delete a previewed scene with backups. Deletion unregisters it and archives its entire folder. Optionally close/reopen Windows STREONOR."""
     with edit_lock(profiles.ROOT):
@@ -95,12 +95,12 @@ def apply_scene_change(profile: str, operation: str, expected_sha256: str, expec
             raise ValueError('Scene or catalog changed; preview again')
         return edit_with_restart(lambda: scenes.apply_change(profile, operation, expected_sha256, expected_registry_sha256, new_name), manage_app, force_close)
 
-@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, openWorldHint=False))
+@mcp.tool(annotations=ToolAnnotations(title='Preview a Control Setting Edit', readOnlyHint=True, destructiveHint=False, openWorldHint=False))
 def preview_setting_change(profile: str, coordinate: str, setting: str, new_value: object, page: str = '', auto_icon: bool = True, icon_query: str = '') -> dict:
     """Preview an existing setting change. URL/app destination changes select a matching icon by default. auto_icon=False preserves the icon. icon_query supplies a service/app name. Does not change the file. JSON types must match."""
     return profiles.prepare(profile, page or None, coordinate, setting, new_value, auto_icon=auto_icon, icon_query=icon_query)
 
-@mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=True, openWorldHint=False))
+@mcp.tool(annotations=ToolAnnotations(title='Apply a Control Setting Edit', readOnlyHint=False, destructiveHint=True, openWorldHint=False))
 def apply_setting_change(profile: str, coordinate: str, setting: str, new_value: object, expected_sha256: str, page: str = '', manage_app: bool = False, force_close: bool = False, auto_icon: bool = True, icon_query: str = '', expected_auto_icon_sha256: str = '') -> dict:
     """Apply a previewed setting edit with backup. manage_app=True closes and reopens STREONOR; force_close=True can discard unsaved app edits. A changed hash requires a new preview."""
     with edit_lock(profiles.ROOT):
@@ -113,21 +113,58 @@ def apply_setting_change(profile: str, coordinate: str, setting: str, new_value:
 
 
 
-@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, openWorldHint=False))
-def preview_action_change(profile: str, operation: str, coordinate: str, source_coordinate: str = '', image_path: str = '', page: str = '', flow_steps: list[dict] | None = None, flow_title: str = '', auto_icon: bool = True, icon_query: str = '', action_name: str = '', action_settings: dict | None = None, controller: str = 'Keypad') -> dict:
-    """Preview action/icon edits. create_by_name builds a slot from installed action_name or UUID and optional action_settings without a source template. configure_action replaces settings for an existing slot. Plugin-specific execution is not verified by creation alone. Other operations: set_flow replaces a key with ordered steps cloned from same-page source_coordinate actions, optional settings overrides and delay_ms. Supply flow_steps and flow_title. New actions and flows get matching icons by default. auto_icon=False opts out and icon_query supplies a name. PNG, JPEG, BMP, GIF, and WebP imports become 1254 x 1254 PNG with transparent padding."""
-    return profiles.prepare_action(profile, page or None, operation, coordinate, source_coordinate, image_path, flow_steps=flow_steps, flow_title=flow_title, auto_icon=auto_icon, icon_query=icon_query, action_name=action_name, action_settings=action_settings, controller=controller)
+@mcp.tool(annotations=ToolAnnotations(title='Preview a Control or Flow Edit', readOnlyHint=True, destructiveHint=False, openWorldHint=False))
+def preview_action_change(profile: str, operation: str, coordinate: str, source_coordinate: str = '', image_path: str = '', page: str = '', flow_steps: list[dict] | None = None, flow_title: str = '', auto_icon: bool = True, icon_query: str = '', action_name: str = '', action_settings: dict | None = None, controller: str = 'Keypad', hotkey: str = '') -> dict:
+    """Preview action/icon edits. create_by_name builds a slot from installed action_name or UUID and optional action_settings without a source template. Supply hotkey, for example Ctrl+Shift+P, with create_by_name and the installed Hotkey action to create one shortcut directly. configure_action replaces settings for an existing slot. Plugin-specific execution is not verified by creation alone. Other operations: set_flow replaces a key with ordered steps cloned from same-page source_coordinate actions, optional settings overrides and delay_ms. Supply flow_steps and flow_title. New actions and flows get matching icons by default. auto_icon=False opts out and icon_query supplies a name. PNG, JPEG, BMP, GIF, and WebP imports become 1254 x 1254 PNG with transparent padding."""
+    return profiles.prepare_action(profile, page or None, operation, coordinate, source_coordinate, image_path, flow_steps=flow_steps, flow_title=flow_title, auto_icon=auto_icon, icon_query=icon_query, action_name=action_name, action_settings=action_settings, controller=controller, hotkey=hotkey)
 
-@mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=True, openWorldHint=False))
-def apply_action_change(profile: str, operation: str, coordinate: str, expected_sha256: str, source_coordinate: str = '', image_path: str = '', expected_image_sha256: str = '', page: str = '', manage_app: bool = False, force_close: bool = False, flow_steps: list[dict] | None = None, flow_title: str = '', auto_icon: bool = True, icon_query: str = '', expected_auto_icon_sha256: str = '', action_name: str = '', action_settings: dict | None = None, controller: str = 'Keypad') -> dict:
+@mcp.tool(annotations=ToolAnnotations(title='Apply a Control or Flow Edit', readOnlyHint=False, destructiveHint=True, openWorldHint=False))
+def apply_action_change(profile: str, operation: str, coordinate: str, expected_sha256: str, source_coordinate: str = '', image_path: str = '', expected_image_sha256: str = '', page: str = '', manage_app: bool = False, force_close: bool = False, flow_steps: list[dict] | None = None, flow_title: str = '', auto_icon: bool = True, icon_query: str = '', expected_auto_icon_sha256: str = '', action_name: str = '', action_settings: dict | None = None, controller: str = 'Keypad', hotkey: str = '') -> dict:
     """Apply a previewed action/icon edit with backup. manage_app=True closes and reopens STREONOR. force_close=True can discard unsaved app edits. Imports become 1254 x 1254 PNG."""
     with edit_lock(profiles.ROOT):
-        preview = profiles.prepare_action(profile, page or None, operation, coordinate, source_coordinate, image_path, flow_steps=flow_steps, flow_title=flow_title, auto_icon=auto_icon, icon_query=icon_query, action_name=action_name, action_settings=action_settings, controller=controller)
+        preview = profiles.prepare_action(profile, page or None, operation, coordinate, source_coordinate, image_path, flow_steps=flow_steps, flow_title=flow_title, auto_icon=auto_icon, icon_query=icon_query, action_name=action_name, action_settings=action_settings, controller=controller, hotkey=hotkey)
         if preview['sha256'] != expected_sha256 or (operation in ('set_icon', 'use_existing_icon') and preview['image_sha256'] != expected_image_sha256):
             raise ValueError('Profile or icon changed since preview; inspect and preview again')
         if expected_auto_icon_sha256 and preview.get('auto_icon', {}).get('sha256') != expected_auto_icon_sha256:
             raise ValueError('Automatic icon changed since preview. Preview again')
-        return edit_with_restart(lambda: profiles.apply_action(profile, page or None, operation, coordinate, expected_sha256, source_coordinate, image_path, expected_image_sha256, flow_steps=flow_steps, flow_title=flow_title, auto_icon=auto_icon, icon_query=icon_query, expected_auto_icon_sha256=expected_auto_icon_sha256, action_name=action_name, action_settings=action_settings, controller=controller), manage_app, force_close)
+        return edit_with_restart(lambda: profiles.apply_action(profile, page or None, operation, coordinate, expected_sha256, source_coordinate, image_path, expected_image_sha256, flow_steps=flow_steps, flow_title=flow_title, auto_icon=auto_icon, icon_query=icon_query, expected_auto_icon_sha256=expected_auto_icon_sha256, action_name=action_name, action_settings=action_settings, controller=controller, hotkey=hotkey), manage_app, force_close)
+
+
+@mcp.tool(annotations=ToolAnnotations(title='Preview Reordering Scene Pages', readOnlyHint=True, destructiveHint=False, openWorldHint=False))
+def preview_page_order(profile: str, page_order: list[str]) -> dict:
+    """Preview a new order for all existing pages. Use the page IDs from the scene registry."""
+    return profiles.prepare_page_order(profile, page_order)[0]
+
+
+@mcp.tool(annotations=ToolAnnotations(title='Reorder Scene Pages', readOnlyHint=False, destructiveHint=True, openWorldHint=False))
+def reorder_pages(profile: str, page_order: list[str], expected_sha256: str, manage_app: bool = False, force_close: bool = False) -> dict:
+    """Apply a previewed page order with a backup. The current page stays selected."""
+    with edit_lock(profiles.ROOT):
+        preview = profiles.prepare_page_order(profile, page_order)[0]
+        if preview['sha256'] != expected_sha256:
+            raise ValueError('Scene changed since preview')
+        if preview['old_order'] == page_order:
+            return {'updated': False, 'new_sha256': expected_sha256}
+        return edit_with_restart(lambda: profiles.reorder_pages(profile, page_order, expected_sha256), manage_app, force_close)
+
+
+@mcp.tool(annotations=ToolAnnotations(title='Preview Restoring Saved Controls', readOnlyHint=True, destructiveHint=False, openWorldHint=False))
+def preview_control_restore(profile: str, backup_name: str, page: str = '') -> dict:
+    """Preview replacing the controls on a scene or page with its own MCP backup. Use the filename returned by a prior edit."""
+    return profiles.prepare_restore(profile, page or None, backup_name)[0]
+
+
+@mcp.tool(annotations=ToolAnnotations(title='Restore Saved Controls', readOnlyHint=False, destructiveHint=True, openWorldHint=False))
+def restore_controls(profile: str, backup_name: str, expected_sha256: str, expected_backup_sha256: str, page: str = '', manage_app: bool = False, force_close: bool = False) -> dict:
+    """Restore a previewed control backup. The current controls are backed up before replacement."""
+    page = page or None
+    with edit_lock(profiles.ROOT):
+        preview = profiles.prepare_restore(profile, page, backup_name)[0]
+        if (preview['sha256'], preview['backup_sha256']) != (expected_sha256, expected_backup_sha256):
+            raise ValueError('Scene or backup changed since preview')
+        if not preview['changed_coordinates']:
+            return {'updated': False, 'new_sha256': expected_sha256}
+        return edit_with_restart(lambda: profiles.restore_controls(profile, page, backup_name, expected_sha256, expected_backup_sha256), manage_app, force_close)
 
 
 def token():
@@ -169,7 +206,7 @@ def main():
     import argparse
     parser = argparse.ArgumentParser(description='Community STREONOR MCP server')
     parser.add_argument('--http', action='store_true', help='Serve authenticated HTTP on localhost:29606 (default: stdio)')
-    parser.add_argument('--version', action='version', version='streonor-mcp 0.6.0')
+    parser.add_argument('--version', action='version', version='streonor-mcp 0.7.0')
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO)
     if args.http:
