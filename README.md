@@ -1,137 +1,111 @@
 # STREONOR MCP
 
-Community MCP tools for STREONOR profiles, actions, knobs and icons. Use the same local server with Claude, Codex, or another MCP client. Not affiliated with STREONOR.
+An MCP server for managing STREONOR profiles, actions and icons from Claude, Codex and other MCP clients.
 
-**S6 Mini is the only hardware-verified device.** S10 Pro, S15 Standard and S32 Max are listed as unsupported. The server runs on Windows, macOS and Linux; hardware and vendor app integration have only been tested on Windows.
+- Inspect profiles and installed actions.
+- Update key and knob settings with preview checks and automatic backups.
+- Add, remove and clone actions from existing templates.
+- Prepare square PNG icons and device-sized boot artwork.
 
-## Quick start
+**Device support:** S6 Mini on Windows. Profile and image tools also run on macOS and Linux. This is a community project, not an official STREONOR integration.
 
-Python 3.12+ is required. Clone this repository (GitHub authentication is required while private), then install in a virtual environment:
+## Installation
 
-```sh
-git clone https://github.com/lde-medeiros/streonor-mcp.git
-cd streonor-mcp
-python -m venv .venv
-# Windows:
-.venv\Scripts\python.exe -m pip install -e .
-# macOS / Linux:
-.venv/bin/python -m pip install -e .
-```
+Use `uvx` to fetch the server, a compatible Python runtime and its dependencies automatically. No manual clone, virtual environment or `pip install` is required. The MCP client must be able to run [uv](https://docs.astral.sh/uv/getting-started/installation/). The Git source requires Git and access to this private repository; it will work for other users after the repository is published.
 
-The installed entry point is `.venv\Scripts\streonor-mcp.exe` on Windows and `.venv/bin/streonor-mcp` on macOS/Linux. Use its **absolute path** in clients so no shell activation or working directory is required. No PyPI release is published; `pip install streonor-mcp` is not the setup instruction yet.
-
-## Connect Claude or Codex
-
-Stdio is the recommended setup: the client starts the native server when needed, with no background service, network port or HTTP token. Replace `/absolute/path/to/streonor-mcp` with your installed entry point, including `.exe` on Windows.
-
-Claude Code:
+### Claude Code
 
 ```sh
-claude mcp add --transport stdio --scope user streonor -- /absolute/path/to/streonor-mcp
+claude mcp add --transport stdio --scope user streonor -- uvx --python 3.12 --from git+https://github.com/lde-medeiros/streonor-mcp@v0.3.0 streonor-mcp
 ```
 
-Codex:
+### Codex
 
 ```sh
-codex mcp add streonor -- /absolute/path/to/streonor-mcp
+codex mcp add streonor -- uvx --python 3.12 --from git+https://github.com/lde-medeiros/streonor-mcp@v0.3.0 streonor-mcp
 ```
 
-Claude Desktop JSON configuration:
+### Claude Desktop and other JSON clients
+
+Merge this entry into your MCP configuration:
 
 ```json
 {
   "mcpServers": {
     "streonor": {
-      "command": "/absolute/path/to/streonor-mcp",
-      "args": []
+      "command": "uvx",
+      "args": [
+        "--python", "3.12",
+        "--from", "git+https://github.com/lde-medeiros/streonor-mcp@v0.3.0",
+        "streonor-mcp"
+      ]
     }
   }
 }
 ```
 
-On Windows, use a JSON-escaped path such as `C:\\path\\streonor-mcp\\.venv\\Scripts\\streonor-mcp.exe`. Merge the entry into your existing configuration instead of replacing other servers.
+Reload the MCP connection after adding it. If the client cannot find `uvx`, use its absolute path. Pinning the release tag avoids an unexpected upgrade when the client starts. See [uv tool sources](https://docs.astral.sh/uv/guides/tools/) for installation and caching behavior.
 
-Codex TOML alternative:
+The default stdio connection needs no port, token or background service. HTTP remains optional. STREONOR's own app is still required for Windows device operation; MCP does not install or replace the vendor software.
 
-```toml
-[mcp_servers.streonor]
-command = "/absolute/path/to/streonor-mcp"
-args = []
-```
+## Usage
 
-Reload the client's MCP connection after changing configuration. Start with: “Use STREONOR MCP to list my profiles. Inspect Development before changing anything.” Do not configure both stdio and HTTP entries for the same server name.
+Try these prompts:
 
-Client syntax references: [Claude Code MCP](https://code.claude.com/docs/en/mcp), [Codex MCP](https://developers.openai.com/codex/mcp/).
+> List my STREONOR profiles and inspect Development.
 
-## Platform support and paths
+> Change Development's Coolify icon to this PNG. Preview the change, back up the profile, and close and reopen STREONOR for the edit.
 
-| Capability | Windows | macOS | Linux |
-| --- | --- | --- | --- |
-| MCP stdio / localhost HTTP | Implemented | Implemented | Implemented |
-| Image preparation and exported profile edits | Implemented | Implemented | Implemented |
-| Vendor app profile discovery | Verified | Set explicit paths | Set explicit paths |
-| Automatic vendor app restart | Implemented | Unsupported | Unsupported |
-| S6 hardware with vendor app | Verified in prior testing | Unverified | Unverified |
-| Direct USB control | Unimplemented | Unimplemented | Unimplemented |
+> Inspect the knobs in Development and preview a change to an existing setting.
 
-Set these environment variables **in the MCP server's environment before startup**:
+The server checks that the profile and source image still match the preview before writing. It serializes cooperating editors, backs up the preceding manifest, and refuses to write while the vendor app is running. On Windows, `manage_app=true` allows the apply tools to close and reopen the app. `force_close=true` additionally permits termination and can discard unsaved app settings.
+
+## Tools
+
+| Tool | Description |
+| --- | --- |
+| `list_supported_devices` | List known models and verified capabilities |
+| `list_available_actions` | List installed plugin action types |
+| `list_profiles` | List profiles and pages |
+| `read_profile` | Read actions, settings and the profile hash |
+| `find_icons` | Search imported icon packs |
+| `prepare_icon` | Create a 1254 x 1254 PNG with transparent padding |
+| `prepare_boot_logo` | Prepare artwork at the model's registered dimensions |
+| `preview_setting_change` | Preview an existing action setting change |
+| `apply_setting_change` | Apply a setting change with a hash check and backup |
+| `preview_action_change` | Preview cloning, removal or icon changes |
+| `apply_action_change` | Apply an action or icon change with a backup |
+
+## Compatibility
+
+| Feature | Windows | macOS / Linux |
+| --- | --- | --- |
+| MCP, image preparation and exported profile edits | Supported | Supported |
+| Vendor profile discovery | Verified | Configure paths |
+| Vendor app restart | Supported | Not implemented |
+| S6 Mini hardware | Verified | Not verified |
+
+Only the S6 Mini is hardware-verified. S10 Pro, S15 Standard and S32 Max remain listed as unsupported. This server does not provide direct USB control, firmware updates, boot-logo uploads, profile/page creation, arbitrary Toolbox execution or live device event streaming. Edits appear after the vendor app reloads its profile; this is not live editing.
+
+## Configuration
+
+Windows profiles are discovered from the installed app. Set these variables in the MCP client's server environment when using another installation or exported profiles:
 
 | Variable | Purpose |
 | --- | --- |
-| `STREONOR_PROFILES_DIR` | Absolute directory containing `*.sdProfile` folders |
-| `STREONOR_ICONS_DIR` | Imported icon pack directory |
-| `STREONOR_DATA_DIR` | MCP backups, HTTP token and logs directory |
+| `STREONOR_PROFILES_DIR` | Directory containing `*.sdProfile` folders |
+| `STREONOR_ICONS_DIR` | Imported icon packs |
+| `STREONOR_DATA_DIR` | Backups, HTTP token and logs |
 
-Windows defaults to `%APPDATA%\HotSpot\StreamDock\profiles` and `%LOCALAPPDATA%\STREONOR-MCP`. On macOS the MCP data default is `~/Library/Application Support/STREONOR-MCP`; on Linux it is `$XDG_DATA_HOME/STREONOR-MCP` or `~/.local/share/STREONOR-MCP`. Non-Windows profiles default to a separate `vendor/profiles` directory under MCP data. These are workspace defaults, not claims about vendor installation layouts. Point `STREONOR_PROFILES_DIR` at an exported copy or a verified installation.
+Use a local exported copy if the vendor app runs on another OS. Local process checks cannot detect a remote app writing a shared profile. Paths, optional HTTP setup, development installation and Windows builds are covered in the [reference](docs/reference.md).
 
-Example client entry for exported profiles:
-
-```json
-{
-  "mcpServers": {
-    "streonor": {
-      "command": "/absolute/path/to/streonor-mcp",
-      "env": {"STREONOR_PROFILES_DIR": "/absolute/path/to/exported/profiles"}
-    }
-  }
-}
-```
-
-Running this server on Linux does not provide access to a Windows app through localhost or a shared path automatically. Do not edit a profile shared with a running vendor app on another OS: local process checks cannot detect remote processes. Configure a local copy for offline edits.
-
-## Tools and edit workflow
-
-| Tool | Purpose |
-| --- | --- |
-| `list_supported_devices` | Device registry and known capabilities |
-| `list_available_actions` | Installed plugin action types, including knob actions |
-| `list_profiles`, `read_profile` | Profiles, pages, settings and current content hash |
-| `find_icons` | Search imported icon packs (SVG listing only) |
-| `prepare_icon` | Create a 1254 x 1254 PNG without editing a profile |
-| `prepare_boot_logo` | Prepare model-sized artwork; does not upload to device |
-| `preview_setting_change`, `apply_setting_change` | Guarded changes to existing settings |
-| `preview_action_change`, `apply_action_change` | Clone/remove actions and set/clear icons |
-
-Read the intended profile and page, preview the edit, then pass the returned hash to the matching apply tool. Every profile write creates a backup. The app must be closed for writes; the UI updates after reopening. Windows apply tools accept `manage_app=true` to handle closing and reopening. If the app stays in the tray, explicit `force_close=true` permits termination and may discard unsaved settings. A changed hash still blocks the edit; inspect and preview again. This is editing with an app restart, not live editing.
-
-Actions can be cloned only from an existing action on that page. Knob settings are editable where present in the vendor profile. Profile/page creation, deletion, live event streaming and invoking arbitrary Toolbox actions are not implemented. Unknown settings require the same JSON type as their existing value.
-
-Imported PNG/JPEG/BMP/GIF/WebP icons become exactly **1254 x 1254 pixels, 1:1, PNG**, with transparent padding, preserved proportions and no cropping. The first frame of animated inputs is used. Small source images are enlarged without adding detail. Original imported files are preserved. `prepare_icon` refuses to overwrite its output. SVG application is not implemented.
-
-## Optional HTTP and Windows executable
-
-Run `streonor-mcp --http` to bind only to `http://127.0.0.1:29606/mcp`. Configure the Bearer token from the MCP data directory's `token.txt`. Keep it secret. Do not expose this port publicly; use stdio for the easiest local setup.
-
-Build a Windows executable with `pyinstaller STREONOR-MCP.spec` after installing PyInstaller separately. Existing `install.ps1` and `setup.cmd` install the executable, Windows sign-in shortcut and HTTP Codex entry. That installer is Windows-only. The portable Python package needs no startup service. The existing installer does not overwrite a pre-existing `streonor` client entry.
-
-## Development and community devices
+## Development
 
 ```sh
 python -m pip install -e .
 python -m unittest discover -s tests
-streonor-mcp --version
 ```
 
-CI runs on Windows, macOS and Linux with Python 3.12/3.13. A CI configuration is not evidence that all hosted jobs or hardware tests have run.
+Tests exercise every MCP tool against disposable fixtures. App lifecycle tests are simulated; they do not certify new hardware. CI covers Windows, macOS and Linux with Python 3.12/3.13.
 
-Add hardware metadata in `streonor_mcp/devices.py`; leave unknown capabilities unset. Keep generic profile/image logic reusable, platform paths in `paths.py`, and lifecycle handling in `app.py`. See [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md) and [CHANGELOG.md](CHANGELOG.md). Never add undocumented USB writes or commit personal profiles/tokens. The repository remains private until its owner chooses to publish it.
+See [Contributing](CONTRIBUTING.md), [Security](SECURITY.md) and [Changelog](CHANGELOG.md). Device definitions live in `streonor_mcp/devices.py`.

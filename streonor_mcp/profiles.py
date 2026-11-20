@@ -5,18 +5,54 @@ import json
 import os
 from pathlib import Path
 import re
-import shutil
 import subprocess
 import tempfile
 import time
 import sys
+import warnings
 from PIL import Image, ImageOps
 from .devices import DEVICES, get_device
 from .paths import profiles_dir, data_dir, icons_dir, vendor_dir
+from .locking import serialized_profile_edit
 
 ROOT = profiles_dir()
 BACKUPS = data_dir() / 'backups'
 PROFILE_ID = re.compile(r'^[A-Za-z0-9-]+\.sdProfile$')
+MAX_MANIFEST_BYTES = 32 * 1024 * 1024
+MAX_IMAGE_PIXELS = 16_000_000
+
+
+def read_bounded(path, limit):
+    with Path(path).open('rb') as f:
+        data = f.read(limit + 1)
+    if len(data) > limit:
+        raise ValueError(f'File exceeds the {limit}-byte limit')
+    return data
+
+
+def parse_manifest(data):
+    def reject_constant(value):
+        raise ValueError(f'Invalid JSON constant: {value}')
+    parsed = json.loads(data.decode('utf-8-sig'), parse_constant=reject_constant)
+    if not isinstance(parsed, dict) or not isinstance(parsed.get('Actions'), dict):
+        raise ValueError('Unrecognized STREONOR manifest')
+    return parsed
+
+
+def write_new_file(output, data):
+    """Publish a complete file atomically without overwriting an existing path."""
+    output.parent.mkdir(parents=True, exist_ok=True)
+    temp = None
+    try:
+        with tempfile.NamedTemporaryFile(dir=output.parent, prefix='.streonor-image-', delete=False) as f:
+            temp = Path(f.name)
+            f.write(data)
+            f.flush()
+            os.fsync(f.fileno())
+        os.link(temp, output)
+    finally:
+        if temp:
+            temp.unlink(missing_ok=True)
 
 
 def fingerprint(data):
@@ -37,10 +73,8 @@ def profile_path(profile, page=None, root=ROOT):
 
 def read_manifest(profile, page=None, root=ROOT):
     path = profile_path(profile, page, root)
-    data = path.read_bytes()
-    parsed = json.loads(data.decode('utf-8-sig'))
-    if not isinstance(parsed, dict) or not isinstance(parsed.get('Actions'), dict):
-        raise ValueError('Unrecognized STREONOR manifest')
+    data = read_bounded(path, MAX_MANIFEST_BYTES)
+    parsed = parse_manifest(data)
     return parsed, fingerprint(data)
 
 
@@ -68,6 +102,7 @@ def prepare(profile, page, coordinate, setting, new_value, root=ROOT):
     old = settings[setting]
     if type(old) is not type(new_value):
         raise ValueError('New value must have the same JSON type as the existing value')
+    json.dumps(new_value, allow_nan=False)
     return {'profile': profile, 'page': page, 'coordinate': coordinate, 'action': action.get('Name'), 'uuid': action.get('UUID'), 'setting': setting, 'old_value': old, 'new_value': new_value, 'sha256': digest}
 
 
@@ -79,6 +114,7 @@ def vendor_running():
     return 'streonor.exe' in result.stdout.lower()
 
 
+@serialized_profile_edit
 def apply(profile, page, coordinate, setting, new_value, expected_sha256, root=ROOT, backups=BACKUPS):
     if vendor_running():
         raise RuntimeError('Quit STREONOR completely before editing profiles; it can overwrite external changes.')
@@ -86,12 +122,14 @@ def apply(profile, page, coordinate, setting, new_value, expected_sha256, root=R
     if preview['sha256'] != expected_sha256:
         raise ValueError('Profile changed since preview; inspect and preview again')
     path = profile_path(profile, page, root)
-    original = path.read_bytes()
+    original = read_bounded(path, MAX_MANIFEST_BYTES)
     if fingerprint(original) != expected_sha256:
         raise ValueError('Profile changed while preparing edit')
-    doc = json.loads(original.decode('utf-8-sig'))
+    doc = parse_manifest(original)
     doc['Actions'][coordinate]['Settings'][setting] = new_value
-    encoded = (json.dumps(doc, indent=4, ensure_ascii=False) + '\n').encode('utf-8')
+    encoded = (json.dumps(doc, indent=4, ensure_ascii=False, allow_nan=False) + '\n').encode('utf-8')
+    if len(encoded) > MAX_MANIFEST_BYTES:
+        raise ValueError('Updated manifest exceeds the 32 MiB limit')
     backups.mkdir(parents=True, exist_ok=True)
     backup = backups / f'{profile}-{time.time_ns()}.json'
     with backup.open('xb') as f:
@@ -105,7 +143,7 @@ def apply(profile, page, coordinate, setting, new_value, expected_sha256, root=R
             f.write(encoded)
             f.flush()
             os.fsync(f.fileno())
-        if vendor_running() or fingerprint(path.read_bytes()) != expected_sha256:
+        if profile_path(profile, page, root) != path or vendor_running() or fingerprint(read_bounded(path, MAX_MANIFEST_BYTES)) != expected_sha256:
             raise RuntimeError('STREONOR started or the profile changed during the edit; no change was applied.')
         os.replace(temp, path)
         temp = None
@@ -117,15 +155,15 @@ def apply(profile, page, coordinate, setting, new_value, expected_sha256, root=R
 
 def read_icon(image_path):
     path = Path(image_path)
-    if path.stat().st_size > 16 * 1024 * 1024:
-        raise ValueError('Icon must be no larger than 16 MiB')
-    data = path.read_bytes()
-    if len(data) > 16 * 1024 * 1024:
-        raise ValueError('Icon must be no larger than 16 MiB')
-    with Image.open(io.BytesIO(data)) as image:
-        if image.format not in ('PNG', 'JPEG', 'BMP', 'GIF', 'WEBP'):
-            raise ValueError('Use a PNG, JPEG, BMP, GIF, or WebP icon')
-        image.verify()
+    data = read_bounded(path, 16 * 1024 * 1024)
+    with warnings.catch_warnings():
+        warnings.simplefilter('error', Image.DecompressionBombWarning)
+        with Image.open(io.BytesIO(data)) as image:
+            if image.format not in ('PNG', 'JPEG', 'BMP', 'GIF', 'WEBP'):
+                raise ValueError('Use a PNG, JPEG, BMP, GIF, or WebP icon')
+            if image.width * image.height > MAX_IMAGE_PIXELS:
+                raise ValueError('Icon must contain no more than 16 million pixels')
+            image.verify()
     return data
 
 
@@ -147,10 +185,7 @@ def prepare_icon(image_path, output_path):
     if output.suffix.lower() != '.png':
         raise ValueError('Icon output must use the .png extension')
     data = normalize_icon(read_icon(image_path))
-    output.parent.mkdir(parents=True, exist_ok=True)
-    # Exclusive creation prevents accidentally overwriting a user's source image.
-    with output.open('xb') as f:
-        f.write(data)
+    write_new_file(output, data)
     return {'path': str(output), 'width': 1254, 'height': 1254, 'format': 'PNG', 'sha256': fingerprint(data)}
 
 
@@ -167,16 +202,9 @@ def prepare_boot_logo(device_id, image_path, output_path):
         raise ValueError('Boot logo output must use the .png extension')
     with Image.open(io.BytesIO(data)) as source:
         image = ImageOps.fit(ImageOps.exif_transpose(source).convert('RGB'), spec.boot_logo_size, method=Image.Resampling.LANCZOS)
-        output.parent.mkdir(parents=True, exist_ok=True)
-        with tempfile.NamedTemporaryFile(dir=output.parent, prefix='.device-logo-', suffix='.png', delete=False) as f:
-            temp = Path(f.name)
-            image.save(f, format='PNG')
-            f.flush()
-            os.fsync(f.fileno())
-        try:
-            os.replace(temp, output)
-        finally:
-            temp.unlink(missing_ok=True)
+        buffer = io.BytesIO()
+        image.save(buffer, format='PNG')
+        write_new_file(output, buffer.getvalue())
     return {'path': str(output), 'device': spec.id, 'width': spec.boot_logo_size[0], 'height': spec.boot_logo_size[1], 'format': 'PNG', 'device_written': False}
 
 
@@ -218,6 +246,7 @@ def prepare_action(profile, page, operation, coordinate, source_coordinate='', i
     return {'profile': profile, 'page': page, 'coordinate': coordinate, 'operation': operation, 'sha256': digest, **detail}
 
 
+@serialized_profile_edit
 def apply_action(profile, page, operation, coordinate, expected_sha256, source_coordinate='', image_path='', expected_image_sha256='', root=ROOT, backups=BACKUPS):
     import copy
     import uuid
@@ -229,10 +258,10 @@ def apply_action(profile, page, operation, coordinate, expected_sha256, source_c
     if operation in ('set_icon', 'use_existing_icon') and preview['image_sha256'] != expected_image_sha256:
         raise ValueError('Icon changed since preview; inspect and preview again')
     path = profile_path(profile, page, root)
-    original = path.read_bytes()
+    original = read_bounded(path, MAX_MANIFEST_BYTES)
     if fingerprint(original) != expected_sha256:
         raise ValueError('Profile changed while preparing edit')
-    doc = json.loads(original.decode('utf-8-sig'))
+    doc = parse_manifest(original)
     actions = doc['Actions']
     icon = None
     icon_data = None
@@ -257,8 +286,12 @@ def apply_action(profile, page, operation, coordinate, expected_sha256, source_c
         f.write(original)
         f.flush()
         os.fsync(f.fileno())
-    encoded = (json.dumps(doc, indent=4, ensure_ascii=False) + '\n').encode('utf-8')
+    encoded = (json.dumps(doc, indent=4, ensure_ascii=False, allow_nan=False) + '\n').encode('utf-8')
+    if len(encoded) > MAX_MANIFEST_BYTES:
+        raise ValueError('Updated manifest exceeds the 32 MiB limit')
     temp = None
+    created_icon = None
+    committed = False
     try:
         if icon:
             images = path.parent / 'Images'
@@ -266,6 +299,7 @@ def apply_action(profile, page, operation, coordinate, expected_sha256, source_c
             if not images.resolve().is_relative_to(root.resolve()):
                 raise ValueError('Image directory escapes profile directory')
             with (images / icon).open('xb') as f:
+                created_icon = images / icon
                 f.write(icon_data)
                 f.flush()
                 os.fsync(f.fileno())
@@ -274,13 +308,16 @@ def apply_action(profile, page, operation, coordinate, expected_sha256, source_c
             f.write(encoded)
             f.flush()
             os.fsync(f.fileno())
-        if vendor_running() or fingerprint(path.read_bytes()) != expected_sha256:
+        if profile_path(profile, page, root) != path or vendor_running() or fingerprint(read_bounded(path, MAX_MANIFEST_BYTES)) != expected_sha256:
             raise RuntimeError('STREONOR started or the profile changed; no manifest change was applied.')
         os.replace(temp, path)
+        committed = True
         temp = None
     finally:
         if temp:
             temp.unlink(missing_ok=True)
+        if created_icon and not committed:
+            created_icon.unlink(missing_ok=True)
     return {'updated': True, 'backup': str(backup), 'new_sha256': fingerprint(encoded), 'icon': icon, 'reopen_app': True}
 
 

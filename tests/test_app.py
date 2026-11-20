@@ -6,6 +6,13 @@ from streonor_mcp.app import edit_with_restart
 
 @patch('streonor_mcp.app.sys.platform', 'win32')
 class AppTests(unittest.TestCase):
+    def test_relaunch_failure_reports_committed_edit(self):
+        with patch('streonor_mcp.app.profiles.vendor_running', side_effect=[True, False, False, False]), patch('streonor_mcp.app.Path.is_file', return_value=True), patch('streonor_mcp.app.subprocess.run'), patch('streonor_mcp.app.subprocess.Popen', side_effect=OSError('launch denied')):
+            result = edit_with_restart(lambda: {'updated': True}, True)
+            self.assertTrue(result['updated'])
+            self.assertFalse(result['app_relaunch_requested'])
+            self.assertIn('launch denied', result['relaunch_error'])
+
     def test_force_close_and_relaunch(self):
         with patch('streonor_mcp.app.profiles.vendor_running', side_effect=[True, False, False, False]), patch('streonor_mcp.app.Path.is_file', return_value=True), patch('streonor_mcp.app.subprocess.run') as run, patch('streonor_mcp.app.subprocess.Popen') as launch:
             result = edit_with_restart(lambda: {'updated': True}, True, True)
