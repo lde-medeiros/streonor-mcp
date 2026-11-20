@@ -23,7 +23,7 @@ names with actual tool discovery and fails if an exposed tool is missing coverag
 | Automatic icons | Local app/pack matching with a generated label fallback | SVG contrast, fallback, opt-out and protocol tests |
 | Solid icon backgrounds | Optional RGB fill and edge-connected background replacement | Pixel/color regression test |
 | App close/reopen | Windows only, explicit forced exit option | Unit failure cases and prior Windows integration checks |
-| Live scene copies | Native Windows scene import with page and action read-back | S6 Mini import, setting/icon edit and multi-page layout. Original app PID verified |
+| Live scene copies | Native Windows scene import with page and action read-back | S6 Mini import, setting/icon edits, multi-page layout and Gaming scene flow/icon edits. Original app PID verified |
 | Backups/stale-write prevention | Manifest/catalog snapshots and hashes | Unit and protocol fixtures |
 | Concurrent cooperating MCP editors | Advisory profile-root lock | Cross-process test |
 | HTTP authentication | Loopback, Bearer token, duplicate-header rejection | ASGI authentication tests |

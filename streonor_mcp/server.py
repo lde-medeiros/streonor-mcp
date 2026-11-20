@@ -185,7 +185,7 @@ def restore_controls(profile: str, backup_name: str, expected_sha256: str, expec
 
 @mcp.tool(annotations=ToolAnnotations(title='Preview a Page or Scene Layout', readOnlyHint=True, destructiveHint=False, openWorldHint=False))
 def preview_scene_layout(profile: str, name: str, pages: list[layout.PageEdit]) -> dict:
-    """Preview a named copy with changes across existing pages. Each page uses its ID or an empty ID for the main page. Controls are keyed by coordinate. Supply action_name to create or replace a control, settings or an icon to edit an existing control, or null to remove it. Set replace=True to clear unlisted controls on a page."""
+    """Preview a named copy with changes across existing pages. Each page uses its ID or an empty ID for the main page. Controls are keyed by coordinate. Supply action_name to create or replace a control, flow_steps and flow_title to place an Action Flow, settings or an icon to edit an existing control, or null to remove it. Use state_index to pick an icon state. Set replace=True to clear unlisted controls on a page."""
     return layout.plan(profile, name, pages, profiles.ROOT)[0]
 
 

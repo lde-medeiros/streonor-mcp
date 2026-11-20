@@ -3,7 +3,7 @@
 ## Unreleased
 
 - Import an edited scene copy with its pages and icons while STREONOR stays open on Windows.
-- Preview a full layout and import edits across multiple pages in one step. Create, replace, configure, or remove controls and choose which pages to rebuild.
+- Preview a full layout and import edits across multiple pages in one step. Create, replace, configure, or remove controls and choose which pages to rebuild. Include Action Flows and target individual icon states.
 
 ## 0.7.1
 

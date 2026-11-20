@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict
 
 from . import live, profiles, scenes
 from .catalog import build_action
+from .flows import build_flow
 from .icons import for_action
 
 
@@ -17,6 +18,9 @@ class ControlEdit(BaseModel):
     settings: dict | None = None
     controller: str = ''
     hotkey: str = ''
+    flow_steps: list[dict] | None = None
+    flow_title: str = ''
+    state_index: int = 0
     image_path: str = ''
     icon_query: str = ''
     auto_icon: bool | None = None
@@ -28,6 +32,13 @@ class PageEdit(BaseModel):
     page: str = ''
     replace: bool = False
     controls: dict[str, ControlEdit | None]
+
+
+def _preview_action(action):
+    result = {key: value for key, value in action.items() if key != 'ActionID'}
+    if 'Actions' in result:
+        result['Actions'] = [_preview_action(child) for child in result['Actions']]
+    return result
 
 
 def plan(profile, name, pages, root):
@@ -63,7 +74,14 @@ def plan(profile, name, pages, root):
                 del actions[coordinate]
                 changes[coordinate] = {'operation': 'remove'}
                 continue
-            if control.action_name:
+            if control.flow_title and control.flow_steps is None:
+                raise ValueError(f'Provide flow_steps with flow_title at {coordinate}')
+            if control.flow_steps is not None:
+                if control.action_name or control.settings is not None or control.controller or control.hotkey:
+                    raise ValueError(f'Use flow_steps and flow_title to define the flow at {coordinate}')
+                action = build_flow(before, coordinate, control.flow_steps, control.flow_title)
+                operation = 'replace' if coordinate in before else 'create'
+            elif control.action_name:
                 controller = control.controller or (old or {}).get('Controller') or 'Keypad'
                 action, _ = build_action(control.action_name, control.settings, controller, hotkey=control.hotkey)
                 operation = 'replace' if coordinate in before else 'create'
@@ -81,27 +99,32 @@ def plan(profile, name, pages, root):
                 if control.settings is not None:
                     action['Settings'] = settings
                 operation = 'edit'
-            details_action = dict(action)
-            if control.action_name:
-                details_action.pop('ActionID')
-            change = {'operation': operation, 'action': details_action}
+            change = {'operation': operation, 'action': (
+                dict(action) if operation == 'edit' else _preview_action(action)
+            )}
             destination_changed = (operation == 'edit'
                                    and any(key in (control.settings or {})
                                            and old.get('Settings', {}).get(key) != control.settings[key]
                                            for key in ('path', 'appId')))
             if (control.image_path or control.icon_query or control.auto_icon is True
-                    or control.auto_icon is not False and (control.action_name or destination_changed)):
-                data, icon = for_action(action, path.parent, control.icon_query, control.image_path)
-                change['icon'] = icon
+                    or control.auto_icon is not False and (operation != 'edit' or destination_changed)):
+                states = list(action.get('States') or [{}])
+                index = control.state_index
+                if not 0 <= index < len(states) or not isinstance(states[index], dict):
+                    raise ValueError(f'No editable icon at state {index} on {coordinate}')
+                data, icon = for_action({**action, 'States': [states[index]]},
+                                        path.parent, control.icon_query, control.image_path)
+                change['icon'] = {**icon, 'state_index': index}
                 if data is not None:
                     image_bytes += len(data)
                     if image_bytes > live.MAX_ARCHIVE_BYTES:
                         raise ValueError('New icons exceed the live import size limit')
                     filename = uuid.uuid4().hex.upper() + '.png'
-                    states = list(action.get('States') or [{}])
-                    states[0] = {**states[0], 'Image': filename}
+                    states[index] = {**states[index], 'Image': filename}
                     action['States'] = states
                     images[member.parent / 'Images' / filename] = data
+            elif control.state_index:
+                raise ValueError(f'Choose an icon when specifying a state at {coordinate}')
             actions[coordinate] = action
             changes[coordinate] = change
         edits[page] = {**doc, 'Actions': actions}

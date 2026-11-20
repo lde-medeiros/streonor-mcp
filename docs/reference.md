@@ -153,7 +153,7 @@ For a full layout, pass `profile`, a unique `name`, and the same `pages` to `pre
 ]
 ```
 
-Omit `page` for the main page. The default preserves unlisted controls. Set `replace=true` to clear them. Use `action_name` or an installed action UUID to place a new control, settings to patch an existing one, `image_path` to choose a local icon, and `null` to remove a listed control. Scene copies do not inherit the source scene's automatic application switching rules.
+Omit `page` for the main page. The default preserves unlisted controls. Set `replace=true` to clear them. Use `action_name` or an installed action UUID to place a new control, settings to patch an existing one, `image_path` to choose a local icon, and `null` to remove a listed control. Set `state_index` when changing an icon on a multi-state key. To place an Action Flow in a layout, use `flow_steps` and `flow_title`. Flow steps can use installed actions or existing controls from the source page, even when replacing that page. Scene copies do not inherit the source scene's automatic application switching rules.
 
 ## Optional HTTP and Windows executable
 

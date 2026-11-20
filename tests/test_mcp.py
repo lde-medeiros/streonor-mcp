@@ -170,6 +170,12 @@ class MCPTests(unittest.IsolatedAsyncioTestCase):
                         {'replace': True, 'controls': {
                             '0,0': {'action_name': 'website', 'settings': {'path': 'https://layout.test'}},
                             '1,0': {'action_name': 'Hotkey fixture', 'hotkey': 'Ctrl+P', 'auto_icon': False},
+                            '0,1': {'action_name': 'HotkeySwitch', 'hotkey': 'Ctrl+M',
+                                    'state_index': 1, 'icon_query': 'Muted'},
+                            '2,0': {'flow_title': 'Two steps', 'auto_icon': False, 'flow_steps': [
+                                {'source_coordinate': '0,0'},
+                                {'action_name': 'Hotkey fixture', 'hotkey': 'Ctrl+P', 'delay_ms': 100},
+                            ]},
                         }},
                         {'page': page, 'controls': {'2,0': {'action_name': 'website', 'auto_icon': False}}},
                     ])
@@ -178,8 +184,12 @@ class MCPTests(unittest.IsolatedAsyncioTestCase):
                     stale = await session.call_tool('apply_scene_layout', {**args, 'expected_layout_sha256': '0' * 64})
                     self.assertTrue(stale.isError)
                     batch = (await call('apply_scene_layout', **args, expected_layout_sha256=layout['layout_sha256']))[0]
-                    self.assertEqual(set(batch['pages'][profile]['Actions']), {'0,0', '1,0'})
+                    layout_actions = batch['pages'][profile]['Actions']
+                    self.assertEqual(set(layout_actions), {'0,0', '1,0', '2,0', '0,1'})
+                    self.assertTrue(layout_actions['0,1']['States'][1]['Image'].endswith('.png'))
+                    self.assertFalse(layout_actions['0,1']['States'][0]['Image'].endswith('.png'))
+                    self.assertEqual([child['Settings']['delay'] for child in layout_actions['2,0']['Actions']], [0, 100])
                     self.assertEqual(set(batch['pages'][page]['Actions']), {'2,0'})
-                    self.assertEqual(batch['images'], 1)
+                    self.assertEqual(batch['images'], 2)
                     self.assertEqual((await call('read_profile', profile=profile))[0]['profile'], reordered)
                     self.assertEqual(set(tools), called, 'Every exposed MCP tool must be exercised')
