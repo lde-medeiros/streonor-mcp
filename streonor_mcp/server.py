@@ -8,6 +8,7 @@ import sys
 
 from mcp.server.fastmcp import FastMCP
 from . import profiles
+from . import scenes
 from .app import edit_with_restart
 from .paths import data_dir
 from .locking import edit_lock
@@ -54,6 +55,20 @@ def read_profile(profile: str, page: str = '') -> dict:
     return {'profile': data, 'sha256': sha}
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, openWorldHint=False))
+def preview_scene_creation(source_profile: str, name: str) -> dict:
+    """Preview a blank scene for the source device, checking its vendor catalog and duplicate names."""
+    return scenes.preview(source_profile, name)
+
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=True, openWorldHint=False))
+def create_scene(source_profile: str, name: str, expected_source_sha256: str, expected_registry_sha256: str, manage_app: bool = False, force_close: bool = False) -> dict:
+    """Create a previewed blank scene and register it in STREONOR, backing up its catalog. Optionally close/reopen the Windows app."""
+    with edit_lock(profiles.ROOT):
+        change = scenes.preview(source_profile, name)
+        if change['source_sha256'] != expected_source_sha256 or change['registry_sha256'] != expected_registry_sha256:
+            raise ValueError('Source or catalog changed; preview again')
+        return edit_with_restart(lambda: scenes.create(source_profile, name, expected_source_sha256, expected_registry_sha256), manage_app, force_close)
+
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, openWorldHint=False))
 def preview_setting_change(profile: str, coordinate: str, setting: str, new_value: object, page: str = '') -> dict:
     """Preview editing one existing action setting. Does not change the file. JSON types must match."""
     return profiles.prepare(profile, page or None, coordinate, setting, new_value)
@@ -70,18 +85,18 @@ def apply_setting_change(profile: str, coordinate: str, setting: str, new_value:
 
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, openWorldHint=False))
-def preview_action_change(profile: str, operation: str, coordinate: str, source_coordinate: str = '', image_path: str = '', page: str = '') -> dict:
-    """Preview action or icon edits. PNG, JPEG, BMP, GIF, and WebP imports become 1254 x 1254 PNG with transparent padding."""
-    return profiles.prepare_action(profile, page or None, operation, coordinate, source_coordinate, image_path)
+def preview_action_change(profile: str, operation: str, coordinate: str, source_coordinate: str = '', image_path: str = '', page: str = '', flow_steps: list[dict] | None = None, flow_title: str = '') -> dict:
+    """Preview action or icon edits; set_flow replaces a key with ordered steps cloned from same-page source_coordinate actions, optional settings overrides and delay_ms. Supply flow_steps and flow_title. PNG, JPEG, BMP, GIF, and WebP imports become 1254 x 1254 PNG with transparent padding."""
+    return profiles.prepare_action(profile, page or None, operation, coordinate, source_coordinate, image_path, flow_steps=flow_steps, flow_title=flow_title)
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=True, openWorldHint=False))
-def apply_action_change(profile: str, operation: str, coordinate: str, expected_sha256: str, source_coordinate: str = '', image_path: str = '', expected_image_sha256: str = '', page: str = '', manage_app: bool = False, force_close: bool = False) -> dict:
+def apply_action_change(profile: str, operation: str, coordinate: str, expected_sha256: str, source_coordinate: str = '', image_path: str = '', expected_image_sha256: str = '', page: str = '', manage_app: bool = False, force_close: bool = False, flow_steps: list[dict] | None = None, flow_title: str = '') -> dict:
     """Apply a previewed action/icon edit with backup. manage_app=True closes and reopens STREONOR. force_close=True can discard unsaved app edits. Imports become 1254 x 1254 PNG."""
     with edit_lock(profiles.ROOT):
-        preview = profiles.prepare_action(profile, page or None, operation, coordinate, source_coordinate, image_path)
+        preview = profiles.prepare_action(profile, page or None, operation, coordinate, source_coordinate, image_path, flow_steps=flow_steps, flow_title=flow_title)
         if preview['sha256'] != expected_sha256 or (operation in ('set_icon', 'use_existing_icon') and preview['image_sha256'] != expected_image_sha256):
             raise ValueError('Profile or icon changed since preview; inspect and preview again')
-        return edit_with_restart(lambda: profiles.apply_action(profile, page or None, operation, coordinate, expected_sha256, source_coordinate, image_path, expected_image_sha256), manage_app, force_close)
+        return edit_with_restart(lambda: profiles.apply_action(profile, page or None, operation, coordinate, expected_sha256, source_coordinate, image_path, expected_image_sha256, flow_steps=flow_steps, flow_title=flow_title), manage_app, force_close)
 
 
 def token():
@@ -123,7 +138,7 @@ def main():
     import argparse
     parser = argparse.ArgumentParser(description='Community STREONOR MCP server')
     parser.add_argument('--http', action='store_true', help='Serve authenticated HTTP on localhost:29606 (default: stdio)')
-    parser.add_argument('--version', action='version', version='streonor-mcp 0.3.0')
+    parser.add_argument('--version', action='version', version='streonor-mcp 0.4.0')
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO)
     if args.http:

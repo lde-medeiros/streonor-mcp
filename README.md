@@ -5,6 +5,7 @@ An MCP server for managing STREONOR profiles, actions and icons from Claude, Cod
 - Inspect profiles and installed actions.
 - Update key and knob settings with preview checks and automatic backups.
 - Add, remove and clone actions from existing templates.
+- Build ordered action flows and create blank scenes.
 - Prepare square PNG icons and device-sized boot artwork.
 
 **Device support:** S6 Mini on Windows. Profile and image tools also run on macOS and Linux. This is a community project, not an official STREONOR integration.
@@ -16,13 +17,13 @@ Use `uvx` to fetch the server, a compatible Python runtime and its dependencies 
 ### Claude Code
 
 ```sh
-claude mcp add --transport stdio --scope user streonor -- uvx --python 3.12 --from git+https://github.com/lde-medeiros/streonor-mcp@v0.3.0 streonor-mcp
+claude mcp add --transport stdio --scope user streonor -- uvx --python 3.12 --from git+https://github.com/lde-medeiros/streonor-mcp@v0.4.0 streonor-mcp
 ```
 
 ### Codex
 
 ```sh
-codex mcp add streonor -- uvx --python 3.12 --from git+https://github.com/lde-medeiros/streonor-mcp@v0.3.0 streonor-mcp
+codex mcp add streonor -- uvx --python 3.12 --from git+https://github.com/lde-medeiros/streonor-mcp@v0.4.0 streonor-mcp
 ```
 
 ### Claude Desktop and other JSON clients
@@ -36,7 +37,7 @@ Merge this entry into your MCP configuration:
       "command": "uvx",
       "args": [
         "--python", "3.12",
-        "--from", "git+https://github.com/lde-medeiros/streonor-mcp@v0.3.0",
+        "--from", "git+https://github.com/lde-medeiros/streonor-mcp@v0.4.0",
         "streonor-mcp"
       ]
     }
@@ -68,6 +69,8 @@ The server checks that the profile and source image still match the preview befo
 | `list_available_actions` | List installed plugin action types |
 | `list_profiles` | List profiles and pages |
 | `read_profile` | Read actions, settings and the profile hash |
+| `preview_scene_creation` | Preview a blank scene and check its vendor catalog |
+| `create_scene` | Create and register a previewed scene with a catalog backup |
 | `find_icons` | Search imported icon packs |
 | `prepare_icon` | Create a 1254 x 1254 PNG with transparent padding |
 | `prepare_boot_logo` | Prepare artwork at the model's registered dimensions |
@@ -85,7 +88,7 @@ The server checks that the profile and source image still match the preview befo
 | Vendor app restart | Supported | Not implemented |
 | S6 Mini hardware | Verified | Not verified |
 
-Only the S6 Mini is hardware-verified. S10 Pro, S15 Standard and S32 Max remain listed as unsupported. This server does not provide direct USB control, firmware updates, boot-logo uploads, profile/page creation, arbitrary Toolbox execution or live device event streaming. Edits appear after the vendor app reloads its profile; this is not live editing.
+Only the S6 Mini is hardware-verified. S10 Pro, S15 Standard and S32 Max remain listed as unsupported. This server does not provide direct USB control, firmware updates, boot-logo uploads, page management, arbitrary Toolbox execution or live device event streaming. Edits appear after the vendor app reloads its profile; this is not live editing.
 
 ## Configuration
 
@@ -109,3 +112,11 @@ python -m unittest discover -s tests
 Tests exercise every MCP tool against disposable fixtures. App lifecycle tests are simulated; they do not certify new hardware. CI covers Windows, macOS and Linux with Python 3.12/3.13.
 
 See [Contributing](CONTRIBUTING.md), [Security](SECURITY.md) and [Changelog](CHANGELOG.md). Device definitions live in `streonor_mcp/devices.py`.
+
+### Ordered flows and scenes
+
+Use `preview_action_change` with `operation="set_flow"`, `flow_title` and `flow_steps`. Each step specifies a same-page `source_coordinate`, optional `settings` overrides matching existing names/types, and `delay_ms` from 0 to 60000. Apply with the same arguments and the preview hash. This replaces the target action in one guarded write. Application launches are requested in order; completion/loading is not awaited.
+
+`preview_scene_creation(source_profile, name)` returns source/catalog hashes. Pass them to `create_scene` to create a blank scene for that device. The observed single-column `Profile` catalog schema is required. Existing scene names are rejected. The app must be closed, or explicitly managed on Windows. A new scene does not inherit automatic app associations. Source profiles are not changed.
+
+See the [capability coverage](docs/capabilities.md) for implemented, tested and unsupported features.
