@@ -8,10 +8,10 @@ Create scenes, build button flows, change knob settings, and add icons using nat
 
 | Device | Model | MCP support |
 | --- | --- | --- |
-| <img src="https://streonor.net/cdn/shop/files/3.jpg?v=1777519053&amp;width=280" alt="STREONOR S6 Mini" width="140"> | **S6 Mini** | Supported and tested on Windows |
-| <img src="https://streonor.net/cdn/shop/files/S10_2.jpg?v=1777519449&amp;width=280" alt="STREONOR S10 Pro" width="140"> | S10 Pro | Not supported yet |
-| <img src="https://streonor.net/cdn/shop/files/S15_2.jpg?v=1776650324&amp;width=280" alt="STREONOR S15 Standard" width="140"> | S15 Standard | Not supported yet |
-| <img src="https://streonor.net/cdn/shop/files/32_-2.jpg?v=1794382927&amp;width=280" alt="STREONOR S32 Max" width="140"> | S32 Max | Not supported yet |
+| <img src="https://streonor.net/cdn/shop/files/3.jpg?v=1777519053&width=280" alt="STREONOR S6 Mini" width="140"> | **S6 Mini** | Supported and tested on Windows |
+| <img src="https://streonor.net/cdn/shop/files/S10_2.jpg?v=1777519449&width=280" alt="STREONOR S10 Pro" width="140"> | S10 Pro | Not supported yet |
+| <img src="https://streonor.net/cdn/shop/files/S15_2.jpg?v=1776650324&width=280" alt="STREONOR S15 Standard" width="140"> | S15 Standard | Not supported yet |
+| <img src="https://streonor.net/cdn/shop/files/32_-2.jpg?v=1794382927&width=280" alt="STREONOR S32 Max" width="140"> | S32 Max | Not supported yet |
 
 Product images and model names: [STREONOR](https://streonor.net/). Images belong to their respective owner. Listing a model does not imply hardware compatibility.
 

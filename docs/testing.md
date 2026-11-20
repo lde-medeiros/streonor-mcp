@@ -1,6 +1,6 @@
 # Validation
 
-The 0.3.0 test suite exercises all 11 exposed tools through a real stdio MCP session
+The 0.5.0 test suite exercises all 15 exposed tools through a real stdio MCP session
 against disposable profiles and image fixtures. Personal device configurations are not used.
 
 Coverage includes device/action/profile discovery, icon search and preparation, boot artwork,
@@ -9,7 +9,7 @@ of unrelated knob settings. Unit tests also cover app exit/relaunch failures, fo
 cross-process edit locking, output overwrite protection, orphan cleanup, bounded input,
 invalid JSON numbers, invalid tokens and duplicate/missing/incorrect HTTP authorization headers.
 
-All 24 tests passed locally on Windows Python 3.12 and Linux Python 3.12 under WSL.
+All 27 tests passed locally on Windows Python 3.12 and Linux Python 3.12 under WSL.
 Hosted Windows/macOS/Linux results are recorded in GitHub Actions, including Python 3.13.
 The dependency audit found no known advisories in the audited installed dependencies after
 upgrading the development environment's old pip. The unpublished project itself is not in
@@ -22,3 +22,12 @@ while the repository remains private. No Python environment or dependencies need
 This does not establish hardware support on macOS/Linux, eliminate races with noncooperating
 file writers, or guarantee recovery from disk failure. The S6 Windows key/icon checks were
 observed in the preceding development session. lifecycle failure cases in CI are simulated.
+
+## Observed 0.5.0 Windows CRUD check
+
+The Development test flow was read, updated and removed through MCP. A temporary knob assignment
+was cloned, read, updated and removed. Existing volume and zoom assignments were preserved.
+The Temp scene was read, renamed and deleted through MCP, retaining its full-folder archive and
+SQLite catalog backup. Daily's GitHub icon was prepared with a black background and applied
+through the guarded icon tools. These observations verify saved configurations and app relaunch.
+Physical deletion/display behavior still needs the user's device check.

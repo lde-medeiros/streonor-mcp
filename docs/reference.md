@@ -2,7 +2,7 @@
 
 Community MCP tools for STREONOR profiles, actions, knobs and icons. Use the same local server with Claude, Codex, or another MCP client. Not affiliated with STREONOR.
 
-**S6 Mini is the only hardware-verified device.** S10 Pro, S15 Standard and S32 Max are listed as unsupported. The server runs on Windows, macOS and Linux. hardware and vendor app integration have only been tested on Windows.
+**S6 Mini is the only hardware-verified device.** S10 Pro, S15 Standard and S32 Max are listed as unsupported. The server runs on Windows, macOS and Linux. Hardware and vendor app integration have only been tested on Windows.
 
 ## Quick start
 
@@ -114,7 +114,7 @@ Running this server on Linux does not provide access to a Windows app through lo
 
 Read the intended profile and page, preview the edit, then pass the returned hash to the matching apply tool. Every profile write creates a backup. The app must be closed for writes. the UI updates after reopening. Windows apply tools accept `manage_app=true` to handle closing and reopening. If the app stays in the tray, explicit `force_close=true` permits termination and may discard unsaved settings. A changed hash still blocks the edit. inspect and preview again. This is editing with an app restart, not live editing.
 
-Actions can be cloned only from an existing action on that page. Knob settings are editable where present in the vendor profile. Profile/page creation, deletion, live event streaming and invoking arbitrary Toolbox actions are not implemented. Unknown settings require the same JSON type as their existing value.
+Actions can be cloned only from an existing action on that page. Knob settings are editable where present in the vendor profile. Scenes can be created, renamed and deleted using the scene tools. Page management, live event streaming and invoking arbitrary Toolbox actions are not implemented. Unknown settings require the same JSON type as their existing value.
 
 Imported PNG/JPEG/BMP/GIF/WebP icons become exactly **1254 x 1254 pixels, 1:1, PNG**, with transparent padding, preserved proportions and no cropping. The first frame of animated inputs is used. Small source images are enlarged without adding detail. Original imported files are preserved. `prepare_icon` refuses to overwrite its output. SVG application is not implemented.
 
@@ -137,3 +137,11 @@ CI runs on Windows, macOS and Linux with Python 3.12/3.13. A CI configuration is
 Add hardware metadata in `streonor_mcp/devices.py`. leave unknown capabilities unset. Keep generic profile/image logic reusable, platform paths in `paths.py`, and lifecycle handling in `app.py`. See [CONTRIBUTING.md](../CONTRIBUTING.md), [SECURITY.md](../SECURITY.md) and [CHANGELOG.md](../CHANGELOG.md). Never add undocumented USB writes or commit personal profiles/tokens. The repository remains private until its owner chooses to publish it.
 
 File safety limits: manifests are capped at 32 MiB, icon inputs at 16 MiB and 16 million pixels. Non-finite JSON numbers are rejected. Icon and boot-artwork preparation refuse to overwrite existing outputs. Profile-root locks serialize cooperating MCP clients on the same local filesystem. they do not lock the vendor app or arbitrary editors. Atomic replacement still has a small race with unrelated writers. Backups should be retained according to your own policy. no automatic pruning removes them.
+
+## Scene management
+
+`preview_scene_creation` and `create_scene` create blank scenes or copy selected source controls with `include_coordinates`. `preview_scene_change` and `apply_scene_change` rename or delete a registered scene. Rename/delete require both the manifest and registry hashes. Scene deletion archives the full scene folder and backs up the catalog. The last scene for a device cannot be deleted.
+
+## Icon backgrounds
+
+`prepare_icon` accepts `background_color` as a hex RGB color such as `#000000`. Optional `replace_edge_background=true` recolors the area connected to the top-left pixel with tolerance 24. Keep this false when you only want to flatten transparency. Both options produce a new 1254 x 1254 PNG and preserve the original input.
