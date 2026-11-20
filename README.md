@@ -36,13 +36,13 @@ The commands download STREONOR MCP and its Python dependencies automatically. Yo
 **Claude Code**
 
 ```sh
-claude mcp add --transport stdio --scope user streonor -- uvx --python 3.12 --from git+https://github.com/lde-medeiros/streonor-mcp@v0.7.0 streonor-mcp
+claude mcp add --transport stdio --scope user streonor -- uvx --python 3.12 --from git+https://github.com/lde-medeiros/streonor-mcp@v0.7.1 streonor-mcp
 ```
 
 **Codex**
 
 ```sh
-codex mcp add streonor -- uvx --python 3.12 --from git+https://github.com/lde-medeiros/streonor-mcp@v0.7.0 streonor-mcp
+codex mcp add streonor -- uvx --python 3.12 --from git+https://github.com/lde-medeiros/streonor-mcp@v0.7.1 streonor-mcp
 ```
 
 **Claude Desktop or another JSON client**
@@ -52,7 +52,7 @@ codex mcp add streonor -- uvx --python 3.12 --from git+https://github.com/lde-me
   "mcpServers": {
     "streonor": {
       "command": "uvx",
-      "args": ["--python", "3.12", "--from", "git+https://github.com/lde-medeiros/streonor-mcp@v0.7.0", "streonor-mcp"]
+      "args": ["--python", "3.12", "--from", "git+https://github.com/lde-medeiros/streonor-mcp@v0.7.1", "streonor-mcp"]
     }
   }
 }
