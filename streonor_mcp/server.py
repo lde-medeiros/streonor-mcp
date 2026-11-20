@@ -128,7 +128,7 @@ def preview_action_change(profile: str, operation: str, coordinate: str, source_
 
 @mcp.tool(annotations=ToolAnnotations(title='Apply a Control or Flow Edit', readOnlyHint=False, destructiveHint=True, openWorldHint=False))
 def apply_action_change(profile: str, operation: str, coordinate: str, expected_sha256: str, source_coordinate: str = '', image_path: str = '', expected_image_sha256: str = '', page: str = '', manage_app: bool = False, force_close: bool = False, flow_steps: list[dict] | None = None, flow_title: str = '', auto_icon: bool = True, icon_query: str = '', expected_auto_icon_sha256: str = '', action_name: str = '', action_settings: dict | None = None, controller: str = 'Keypad', hotkey: str = '', state_index: int = 0, live_scene_name: str = '', live_in_place: bool = False) -> dict:
-    """Apply a previewed action/icon edit with backup. manage_app=True closes and reopens STREONOR. force_close=True can discard unsaved app edits. Use live_scene_name on Windows to import the edit into a new scene while STREONOR runs. Use live_in_place=True to set a Scene Shift icon in the selected single-page S6 Mini scene on Windows. Imported icons become 1254 x 1254 PNG."""
+    """Apply a previewed action/icon edit with backup. manage_app=True closes and reopens STREONOR. force_close=True can discard unsaved app edits. Use live_scene_name on Windows to import the edit into a new scene while STREONOR runs. Use live_in_place=True to set or reset a Scene Shift icon in the selected single-page S6 Mini scene on Windows. Imported icons become 1254 x 1254 PNG."""
     with edit_lock(profiles.ROOT):
         preview = profiles.prepare_action(profile, page or None, operation, coordinate, source_coordinate, image_path, flow_steps=flow_steps, flow_title=flow_title, auto_icon=auto_icon, icon_query=icon_query, action_name=action_name, action_settings=action_settings, controller=controller, hotkey=hotkey, state_index=state_index)
         if preview['sha256'] != expected_sha256 or (operation in ('set_icon', 'use_existing_icon') and preview['image_sha256'] != expected_image_sha256):
@@ -137,11 +137,11 @@ def apply_action_change(profile: str, operation: str, coordinate: str, expected_
             raise ValueError('Automatic icon changed since preview. Preview again')
 
         if live_in_place:
-            if operation != 'set_icon' or live_scene_name or manage_app or force_close:
-                raise ValueError('live_in_place supports set_icon without scene copy or restart options')
-            from .live_ui import set_icon
-            return set_icon(profile, page, coordinate, expected_sha256, image_path,
-                            expected_image_sha256, state_index)
+            if operation not in ('set_icon', 'clear_icon') or live_scene_name or manage_app or force_close:
+                raise ValueError('live_in_place supports set_icon and clear_icon without scene copy or restart options')
+            from .live_ui import edit_icon
+            return edit_icon(profile, page, coordinate, expected_sha256, image_path,
+                             expected_image_sha256, state_index, operation)
 
         def edit():
             return profiles.apply_action(profile, page or None, operation, coordinate, expected_sha256, source_coordinate, image_path, expected_image_sha256, flow_steps=flow_steps, flow_title=flow_title, auto_icon=auto_icon, icon_query=icon_query, expected_auto_icon_sha256=expected_auto_icon_sha256, action_name=action_name, action_settings=action_settings, controller=controller, hotkey=hotkey, state_index=state_index, live_scene_name=live_scene_name)

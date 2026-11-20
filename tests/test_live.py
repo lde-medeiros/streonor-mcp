@@ -48,5 +48,8 @@ class InPlaceIconTests(unittest.TestCase):
         saved['Actions']['4,1']['Controller'] = ''
         saved['Actions']['4,1']['States'][0]['Image'] = 'icon.png'
         self.assertTrue(_only_icon_changed(source, saved, '4,1', 'icon.png'))
-        saved['Actions']['4,1']['Settings']['ProfileUUID'] = 'changed'
-        self.assertFalse(_only_icon_changed(source, saved, '4,1', 'icon.png'))
+        restored = copy.deepcopy(saved)
+        restored['Actions']['4,1']['States'][0]['Image'] = ''
+        self.assertTrue(_only_icon_changed(saved, restored, '4,1', ''))
+        restored['Actions']['4,1']['Settings']['ProfileUUID'] = 'changed'
+        self.assertFalse(_only_icon_changed(saved, restored, '4,1', ''))

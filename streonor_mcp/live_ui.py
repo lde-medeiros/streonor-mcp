@@ -54,7 +54,7 @@ def _only_icon_changed(before, after, coordinate, filename):
     return after == expected
 
 
-def set_icon(profile, page, coordinate, expected_sha256, image_path, expected_image_sha256, state_index):
+def edit_icon(profile, page, coordinate, expected_sha256, image_path, expected_image_sha256, state_index, operation):
     if sys.platform != 'win32':
         raise RuntimeError('In-place live editing requires the Windows STREONOR desktop')
     try:
@@ -81,19 +81,24 @@ def set_icon(profile, page, coordinate, expected_sha256, image_path, expected_im
         raise ValueError('In-place icon editing currently supports Scene Shift at 4,1 on a single-page S6 Mini scene')
     if sum(p['name'] == doc['Name'] for p in profiles.list_profiles()) != 1:
         raise ValueError('Scene name must uniquely identify the target in STREONOR')
-    image = profiles.read_icon(image_path)
-    if profiles.fingerprint(image) != expected_image_sha256:
-        raise ValueError('Image changed since preview')
+    restore_default = operation == 'clear_icon'
     pid = live._vendor_pid()
     if not pid:
         raise RuntimeError('Open STREONOR before requesting live editing')
     pid = int(pid)
     source_path = profiles.profile_path(profile)
-    normalized = profiles.normalize_icon(image)
-    with Image.open(io.BytesIO(normalized)) as prepared:
-        expected_pixels = prepared.convert('RGBA').tobytes()
     old_image = action['States'][0].get('Image')
-    if _matches_icon(source_path.parent, old_image, expected_pixels):
+    if restore_default:
+        already_applied = old_image == ''
+    else:
+        image = profiles.read_icon(image_path)
+        if profiles.fingerprint(image) != expected_image_sha256:
+            raise ValueError('Image changed since preview')
+        normalized = profiles.normalize_icon(image)
+        with Image.open(io.BytesIO(normalized)) as prepared:
+            expected_pixels = prepared.convert('RGBA').tobytes()
+        already_applied = _matches_icon(source_path.parent, old_image, expected_pixels)
+    if already_applied:
         return {'updated': False, 'profile': profile, 'name': doc['Name'], 'coordinate': coordinate,
                 'new_sha256': digest, 'icon': old_image, 'app_restarted': False}
     app = Application(backend='uia').connect(process=pid, timeout=3)
@@ -126,14 +131,43 @@ def set_icon(profile, page, coordinate, expected_sha256, image_path, expected_im
     _one(icon.children(control_type='Button'), 'icon menu button').invoke()
     menu = _wait_for(lambda: [w for w in app.windows(visible_only=True)
                               if w.element_info.class_name == 'QMenu'], 'the icon menu')
+    command = 'Reset to default' if restore_default else 'Select Local File'
     item = _one((i for i in _one(menu, 'icon menu').descendants(control_type='MenuItem')
-                 if i.window_text() == 'Select Local File' and i.is_enabled()), 'Select Local File')
+                 if i.window_text() == command and i.is_enabled()), command)
 
     backup = profiles.BACKUPS / f'{profile}--{profile}--{time.time_ns()}.json'
     original = profiles.read_bounded(source_path, profiles.MAX_MANIFEST_BYTES)
     if profiles.fingerprint(original) != expected_sha256 or scene.get_toggle_state() != 1:
-        raise ValueError('Scene changed before the icon picker opened')
+        raise ValueError('Scene changed before applying the icon edit')
     profiles.write_new_file(backup, original)
+    if restore_default:
+        item.click_input()
+    else:
+        _choose_icon_file(item, normalized, pid, Desktop, win32gui, win32con, win32process)
+
+    def read_saved():
+        try:
+            updated, new_digest = profiles.read_manifest(profile)
+        except (FileNotFoundError, ValueError):
+            return None
+        if new_digest != expected_sha256:
+            return updated, new_digest
+        return None
+
+    updated, new_digest = _wait_for(read_saved, 'a saved icon change')
+    after = updated['Actions'].get(coordinate, {})
+    new_image = (after.get('States') or [{}])[0].get('Image')
+    saved_as_requested = (new_image == '' if restore_default
+                          else _matches_icon(source_path.parent, new_image, expected_pixels))
+    if (not saved_as_requested or new_image == old_image
+            or not _only_icon_changed(doc, updated, coordinate, new_image)
+            or live._vendor_pid() != str(pid)):
+        raise RuntimeError(f'STREONOR saved changes, but the icon edit could not be fully verified. Backup: {backup}')
+    return {'updated': True, 'profile': profile, 'name': doc['Name'], 'coordinate': coordinate,
+            'new_sha256': new_digest, 'icon': new_image, 'backup': str(backup), 'app_restarted': False}
+
+
+def _choose_icon_file(item, normalized, pid, Desktop, win32gui, win32con, win32process):
     with tempfile.TemporaryDirectory(prefix='streonor-live-icon-') as temp:
         icon_file = Path(temp) / 'icon.png'
         icon_file.write_bytes(normalized)
@@ -198,22 +232,3 @@ def set_icon(profile, page, coordinate, expected_sha256, image_path, expected_im
         finally:
             if win32gui.IsWindow(crop):
                 win32gui.PostMessage(crop, win32con.WM_CLOSE, 0, 0)
-
-        def read_saved():
-            try:
-                updated, new_digest = profiles.read_manifest(profile)
-            except (FileNotFoundError, ValueError):
-                return None
-            if new_digest != expected_sha256:
-                return updated, new_digest
-            return None
-
-        updated, new_digest = _wait_for(read_saved, 'a saved icon change')
-        after = updated['Actions'].get(coordinate, {})
-        new_image = (after.get('States') or [{}])[0].get('Image')
-        if (new_image == old_image or not _only_icon_changed(doc, updated, coordinate, new_image)
-                or not _matches_icon(source_path.parent, new_image, expected_pixels)
-                or live._vendor_pid() != str(pid)):
-            raise RuntimeError(f'STREONOR saved changes, but the icon edit could not be fully verified. Backup: {backup}')
-        return {'updated': True, 'profile': profile, 'name': doc['Name'], 'coordinate': coordinate,
-                'new_sha256': new_digest, 'icon': new_image, 'backup': str(backup), 'app_restarted': False}
