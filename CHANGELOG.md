@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Edit or clear existing scene pages in a single batch, or create a named scene with copied knobs and fully configured new controls.
+- Find installed Steam titles and add launch keys by app ID without hand-writing URLs.
+- Manage one Windows app restart by default for layout and scene changes, and report whether the app reopened.
+
 ## 0.8.2
 
 - Add package metadata for the official MCP Registry and prepare PyPI distribution.

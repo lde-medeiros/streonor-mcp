@@ -61,3 +61,36 @@ class InPlaceIconTests(unittest.TestCase):
         after = {'Actions': {'2,1': {'Controller': '', 'States': [{'Image': 'active.png'}, {'Image': 'muted.png'}]}}}
         self.assertTrue(_only_icon_changed(before, after, '2,1', 'muted.png', 1))
         self.assertFalse(_only_icon_changed(before, after, '2,1', 'muted.png', 0))
+
+
+class LayoutWriteTests(unittest.TestCase):
+    def test_failed_second_page_rolls_back_first_page_and_new_icons(self):
+        from unittest.mock import patch
+        from streonor_mcp import layout, profiles
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            profile, page = 'root.sdProfile', 'second.sdProfile'
+            paths = {
+                profile: root / profile / 'manifest.json',
+                page: root / profile / 'profiles' / page / 'manifest.json',
+            }
+            original = b'{"Actions": {}}'
+            for path in paths.values():
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(original)
+            replace = layout.os.replace
+
+            def fail_second(source, target):
+                if target == paths[page]:
+                    raise OSError('simulated second page failure')
+                return replace(source, target)
+
+            edits = {key: {'Actions': {'0,0': {'Name': 'New'}}} for key in paths}
+            hashes = {key: profiles.fingerprint(original) for key in paths}
+            icon = Path('Images/new.png')
+            with patch.object(profiles, 'vendor_running', return_value=False), patch.object(layout.os, 'replace', side_effect=fail_second):
+                with self.assertRaisesRegex(OSError, 'second page'):
+                    layout.apply_in_place(profile, edits, hashes, {icon: b'icon'}, root, root / 'backups')
+            self.assertTrue(all(path.read_bytes() == original for path in paths.values()))
+            self.assertFalse((root / profile / icon).exists())

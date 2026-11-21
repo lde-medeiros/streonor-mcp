@@ -4,19 +4,20 @@ import json
 import uuid
 
 
-def build_action(name, settings=None, controller='Keypad', in_flow=False, hotkey=''):
+def build_action(name, settings=None, controller='Keypad', in_flow=False, hotkey='', *, installed=None):
     from .profiles import list_installed_actions
     if not isinstance(name, str) or not name.strip():
         raise ValueError('Provide an installed action name or UUID')
     query = name.strip().casefold()
-    installed = list_installed_actions()
+    if installed is None:
+        installed = list_installed_actions()
     if query in ('hotkeyswitch', 'com.hotspot.streamdock.system.hotkeyswitch') and not any(
         action['uuid'] == 'com.hotspot.streamdock.system.hotkeySwitch' for action in installed
     ):
-        installed.append({'uuid': 'com.hotspot.streamdock.system.hotkeySwitch', 'name': 'HotkeySwitch',
+        installed = [*installed, {'uuid': 'com.hotspot.streamdock.system.hotkeySwitch', 'name': 'HotkeySwitch',
                           'plugin': 'System', 'controllers': ['Keypad'],
                           'states': [{'Image': 'Images/btn_custom_trigger_hotkeySwitch1'},
-                                     {'Image': 'Images/btn_custom_trigger_hotkeySwitch2'}]})
+                                     {'Image': 'Images/btn_custom_trigger_hotkeySwitch2'}]}]
     matches = [a for a in installed if query == a['uuid'].casefold()]
     if not matches:
         matches = [a for a in installed if query in ((a['name'] or '').casefold(), ((a['plugin'] or '') + '/' + (a['name'] or '')).casefold())]
