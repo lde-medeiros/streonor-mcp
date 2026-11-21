@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.1
+
+- Fix scene archive validation on macOS when the temporary directory resolves to a different path.
+- Limit the experimental Windows installer to copying the executable. Use the standard stdio setup for normal installs.
+- Ignore local credentials and personal device exports. Clarify device compatibility and live editing limits.
+
 ## 0.8.0
 
 - Replace an occupied control by action name in one write. Apply preferred images for several states together and reuse prepared actions and icons on apply.

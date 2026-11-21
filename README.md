@@ -16,13 +16,13 @@ An independent community project. Unaffiliated with STREONOR.
    **Codex**
 
    ```sh
-   codex mcp add streonor -- uvx --python 3.12 --from git+https://github.com/lde-medeiros/streonor-mcp@v0.8.0 streonor-mcp
+   codex mcp add streonor -- uvx --python 3.12 --from git+https://github.com/lde-medeiros/streonor-mcp@v0.8.1 streonor-mcp
    ```
 
    **Claude Code**
 
    ```sh
-   claude mcp add --transport stdio --scope user streonor -- uvx --python 3.12 --from git+https://github.com/lde-medeiros/streonor-mcp@v0.8.0 streonor-mcp
+   claude mcp add --transport stdio --scope user streonor -- uvx --python 3.12 --from git+https://github.com/lde-medeiros/streonor-mcp@v0.8.1 streonor-mcp
    ```
 
 3. Restart your client and ask: “Use STREONOR MCP to list my scenes.”
@@ -33,7 +33,7 @@ An independent community project. Unaffiliated with STREONOR.
 
 - **Build or edit a scene.** Fill a page with app launchers, shortcuts, knobs, or multi-step Action Flows. The MCP previews changes and keeps backups.
 - **Give each state its own icon.** Use an installed icon or supply your own, including separate images for a Hotkey Switch.
-- **Keep the Windows app open.** Change supported icons in the original S6 Mini scene or import a full layout as a scene copy. Other edits to the original scene use an app restart. [Live editing setup](docs/reference.md#edit-while-streonor-stays-open).
+- **Keep the Windows app open.** Try experimental live icon editing in the original S6 Mini scene or import a full layout as a scene copy. Other edits to the original scene use an app restart. [Live editing setup](docs/reference.md#edit-while-streonor-stays-open).
 
 ## Devices
 
