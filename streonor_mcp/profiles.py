@@ -21,6 +21,7 @@ BACKUPS = data_dir() / 'backups'
 PROFILE_ID = re.compile(r'^[A-Za-z0-9-]+\.sdProfile$')
 MAX_MANIFEST_BYTES = 32 * 1024 * 1024
 MAX_IMAGE_PIXELS = 16_000_000
+ICON_SIZE = (1254, 1254)
 
 
 def read_bounded(path, limit):
@@ -86,11 +87,23 @@ def list_profiles(root=ROOT):
             data, digest = read_manifest(manifest.parent.name, root=root)
             software_id = data.get('DeviceUUID')
             spec = next((d for d in DEVICES if software_id in d.software_ids), None)
-            result.append({'id': manifest.parent.name, 'name': data.get('Name'), 'device': software_id, 'device_model': spec.id if spec else None, 'pages': data.get('Pages'), 'sha256': digest})
+            result.append({'id': manifest.parent.name, 'name': data.get('Name'), 'device': software_id, 'device_model': spec.id if spec else None, 'keypad_coordinates': list(spec.keypad_coordinates) if spec else [], 'pages': data.get('Pages'), 'sha256': digest})
         except (OSError, ValueError, json.JSONDecodeError):
             continue
     return result
 
+
+
+def resolve_scene(profile, root=None):
+    """Accept an ID or one exact, case-insensitive scene name."""
+    profile = profile.strip()
+    if PROFILE_ID.fullmatch(profile):
+        return profile
+    matches = [p['id'] for p in list_profiles(ROOT if root is None else root)
+               if isinstance(p['name'], str) and p['name'].casefold() == profile.casefold()]
+    if len(matches) != 1:
+        raise ValueError('Scene name is missing or ambiguous. Use an exact name or ID from list_profiles')
+    return matches[0]
 
 def prepare(profile, page, coordinate, setting, new_value, root=ROOT, auto_icon=True, icon_query=''):
     doc, digest = read_manifest(profile, page, root)
@@ -172,8 +185,8 @@ def normalize_icon(data, background_color='', replace_edge_background=False):
         if replace_edge_background:
             color = tuple(bytes.fromhex(background_color[1:])) + (255,)
             ImageDraw.floodfill(image, (0, 0), color, thresh=24)
-        image = ImageOps.contain(image, (1254, 1254), Image.Resampling.LANCZOS)
-        canvas = Image.new('RGBA', (1254, 1254), background_color or (0, 0, 0, 0))
+        image = ImageOps.contain(image, ICON_SIZE, Image.Resampling.LANCZOS)
+        canvas = Image.new('RGBA', ICON_SIZE, background_color or (0, 0, 0, 0))
         canvas.alpha_composite(image, ((1254-image.width)//2, (1254-image.height)//2))
         output = io.BytesIO()
         canvas.save(output, format='PNG')

@@ -13,11 +13,13 @@ class DeviceSpec:
     boot_logo_format: str | None = None
     boot_logo_upload: str | None = None
     supported: bool = False
+    keypad_coordinates: tuple[str, ...] = ()
 
 
 # Add new hardware here. Leave unknown values as None/'unknown'; never infer a write protocol.
 DEVICES = (
-    DeviceSpec('streonor-s6-mini', 'STREONOR S6 Mini', ('StreonorS6',), 6, 3, (320, 240), 'unknown', None, True),
+    DeviceSpec('streonor-s6-mini', 'STREONOR S6 Mini', ('StreonorS6',), 6, 3, (320, 240), 'unknown', None, True,
+               ('0,0', '1,0', '2,0', '0,1', '1,1', '2,1')),
     DeviceSpec('streonor-s10-pro', 'STREONOR S10 Pro', ('StreonorS10',), supported=False),
     DeviceSpec('streonor-s15-standard', 'STREONOR S15 Standard', ('StreonorS15',), supported=False),
     DeviceSpec('streonor-s32-max', 'STREONOR S32 Max', ('StreonorS32',), supported=False),
@@ -35,6 +37,7 @@ def describe(device_id):
     spec = get_device(device_id)
     return {'id': spec.id, 'name': spec.name, 'software_ids': list(spec.software_ids),
             'keys': spec.key_count, 'dials': spec.dial_count,
+            'keypad_coordinates': list(spec.keypad_coordinates),
             'boot_logo_size': list(spec.boot_logo_size) if spec.boot_logo_size else None,
             'boot_logo_format': spec.boot_logo_format, 'boot_logo_upload': spec.boot_logo_upload,
             'supported': spec.supported}

@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Use real Steam artwork by default. Compose square game icons with official logos and hide duplicate titles.
+- Prefer supplied and installed icons. Flag placeholder icons so MCP clients can supply official or generated artwork.
+- Accept scene names, expose verified keypad slots, clear every page in one operation, and skip restarts for unchanged layouts.
+- Keep explicitly copied controls when building new scenes and verify the saved layout after applying it.
+
 ## 0.8.3
 
 - Edit or clear existing scene pages in a single batch, or create a named scene with copied knobs and fully configured new controls.
