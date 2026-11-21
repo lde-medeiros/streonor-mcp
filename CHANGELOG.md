@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.1
+
+- Create a native Hotkey Switch with the same shortcut in both states.
+- Preview and set icons for individual action states.
+- Verify shortcut configuration in the vendor app before relying on its behavior.
+
 ## 0.7.0
 
 - Preview and reorder existing pages while preserving the current selection.

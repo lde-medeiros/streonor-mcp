@@ -36,6 +36,22 @@ class ProfileTests(unittest.TestCase):
         with patch('streonor_mcp.profiles.vendor_dir', return_value=plugins.parent), patch('streonor_mcp.profiles.sys.platform', 'linux'):
             actions = profiles.list_installed_actions()
         self.assertEqual([(action['uuid'], action['plugin']) for action in actions], [('website', None)])
+    def test_set_icon_on_second_state(self):
+        from PIL import Image
+        self.original['Actions']['0,0']['States'].append({'Image': 'second.png'})
+        self.path.write_text(json.dumps(self.original), encoding='utf-8')
+        image = Path(self.temp.name) / 'icon.png'
+        Image.new('RGB', (8, 8), 'red').save(image)
+        change = profiles.prepare_action(self.profile, None, 'set_icon', '0,0', image_path=str(image), root=self.root, state_index=1)
+        with patch('streonor_mcp.profiles.vendor_running', return_value=False):
+            profiles.apply_action(self.profile, None, 'set_icon', '0,0', change['sha256'], image_path=str(image), expected_image_sha256=change['image_sha256'], root=self.root, backups=self.backups, state_index=1)
+        states = json.loads(self.path.read_text())['Actions']['0,0']['States']
+        self.assertEqual(states[0]['Image'], 'old.png')
+        self.assertNotEqual(states[1]['Image'], 'second.png')
+        self.assertTrue((self.path.parent / 'Images' / states[1]['Image']).exists())
+        with self.assertRaises(ValueError):
+            profiles.prepare_action(self.profile, None, 'clear_icon', '0,0', root=self.root, state_index=2)
+
     def test_preview_and_apply_backup(self):
         change = profiles.prepare(self.profile, None, '0,0', 'path', 'https://new.test', self.root)
         self.assertEqual(change['old_value'], 'https://old.test')

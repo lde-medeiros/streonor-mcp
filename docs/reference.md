@@ -170,3 +170,5 @@ Use the backup filename returned by a profile edit. Preview it for the same scen
 ## Change the boot logo
 
 Use `prepare_boot_logo` to make a 320 × 240 PNG for the S6 Mini. Choose `fit="cover"` to fill the frame or `fit="contain"` to keep the entire image with black padding. In STREONOR, open **Setting → Device** and select **Replace the boot logo (Resolution 320*240)**. Choose the prepared PNG. The MCP prepares the image locally. The vendor app applies it to the device.
+
+HotkeySwitch can be created by name with `hotkey` to assign the same chord to both states. Use `state_index` with icon preview and apply operations to select a state. Verify shortcut behavior in the vendor app.

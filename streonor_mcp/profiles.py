@@ -219,12 +219,14 @@ def prepare_boot_logo(device_id, image_path, output_path, fit="cover"):
     return {'path': str(output), 'sha256': fingerprint(encoded), 'fit': fit, 'device': spec.id, 'width': spec.boot_logo_size[0], 'height': spec.boot_logo_size[1], 'format': 'PNG', 'device_written': False}
 
 
-def prepare_action(profile, page, operation, coordinate, source_coordinate='', image_path='', root=ROOT, flow_steps=None, flow_title='', auto_icon=True, icon_query='', action_name='', action_settings=None, controller='Keypad', hotkey=''):
+def prepare_action(profile, page, operation, coordinate, source_coordinate='', image_path='', root=ROOT, flow_steps=None, flow_title='', auto_icon=True, icon_query='', action_name='', action_settings=None, controller='Keypad', hotkey='', state_index=0):
     doc, digest = read_manifest(profile, page, root)
     actions = doc['Actions']
     if not re.fullmatch(r'\d+,\d+', coordinate):
         raise ValueError('Coordinate must use the app format, for example 0,0')
     before = actions.get(coordinate)
+    if not isinstance(state_index, int) or isinstance(state_index, bool) or state_index < 0:
+        raise ValueError('State index must be a non-negative integer')
     if hotkey and operation != 'create_by_name':
         raise ValueError('Use hotkey with create_by_name for an installed Hotkey action')
     if operation == 'create_by_name':
@@ -259,9 +261,10 @@ def prepare_action(profile, page, operation, coordinate, source_coordinate='', i
         detail = {'action': before.get('Name'), 'uuid': before.get('UUID')}
         if operation in ('set_icon', 'clear_icon', 'use_existing_icon'):
             states = before.get('States')
-            if not isinstance(states, list) or not states or not isinstance(states[0], dict):
-                raise ValueError('This action has no editable first image state')
-            detail['old_image'] = states[0].get('Image', '')
+            if not isinstance(states, list) or state_index >= len(states) or not isinstance(states[state_index], dict):
+                raise ValueError('This action has no editable image at that state index')
+            detail['old_image'] = states[state_index].get('Image', '')
+            detail['state_index'] = state_index
         if operation in ('set_icon', 'use_existing_icon'):
             if operation == 'use_existing_icon':
                 image_dir = profile_path(profile, page, root).parent / 'Images'
@@ -280,12 +283,12 @@ def prepare_action(profile, page, operation, coordinate, source_coordinate='', i
 
 
 @serialized_profile_edit
-def apply_action(profile, page, operation, coordinate, expected_sha256, source_coordinate='', image_path='', expected_image_sha256='', root=ROOT, backups=BACKUPS, flow_steps=None, flow_title='', auto_icon=True, icon_query='', expected_auto_icon_sha256='', action_name='', action_settings=None, controller='Keypad', hotkey=''):
+def apply_action(profile, page, operation, coordinate, expected_sha256, source_coordinate='', image_path='', expected_image_sha256='', root=ROOT, backups=BACKUPS, flow_steps=None, flow_title='', auto_icon=True, icon_query='', expected_auto_icon_sha256='', action_name='', action_settings=None, controller='Keypad', hotkey='', state_index=0):
     import copy
     import uuid
     if vendor_running():
         raise RuntimeError('Quit STREONOR completely before editing profiles.')
-    preview = prepare_action(profile, page, operation, coordinate, source_coordinate, image_path, root, flow_steps, flow_title, auto_icon, icon_query, action_name, action_settings, controller, hotkey)
+    preview = prepare_action(profile, page, operation, coordinate, source_coordinate, image_path, root, flow_steps, flow_title, auto_icon, icon_query, action_name, action_settings, controller, hotkey, state_index)
     if preview['sha256'] != expected_sha256:
         raise ValueError('Profile changed since preview; inspect and preview again')
     if operation in ('set_icon', 'use_existing_icon') and preview['image_sha256'] != expected_image_sha256:
@@ -312,7 +315,7 @@ def apply_action(profile, page, operation, coordinate, expected_sha256, source_c
     elif operation == 'remove':
         del actions[coordinate]
     elif operation == 'clear_icon':
-        actions[coordinate]['States'][0]['Image'] = ''
+        actions[coordinate]['States'][state_index]['Image'] = ''
     else:
         source_data = read_icon(image_path)
         if fingerprint(source_data) != expected_image_sha256:
@@ -324,12 +327,12 @@ def apply_action(profile, page, operation, coordinate, expected_sha256, source_c
         icon_data, auto_info = for_action(actions[coordinate], path.parent, icon_query, image_path)
         if expected_auto_icon_sha256 and (auto_info or {}).get('sha256') != expected_auto_icon_sha256:
             raise ValueError('Automatic icon changed since preview; preview again')
-    result = commit_edit(profile, page, coordinate, path, original, doc, expected_sha256, root, backups, icon_data)
+    result = commit_edit(profile, page, coordinate, path, original, doc, expected_sha256, root, backups, icon_data, state_index)
     result['auto_icon'] = auto_info
     return result
 
 
-def commit_edit(profile, page, coordinate, path, original, doc, expected_sha256, root, backups, icon_data=None):
+def commit_edit(profile, page, coordinate, path, original, doc, expected_sha256, root, backups, icon_data=None, state_index=0):
     import uuid
     icon = None
     if icon_data is not None:
@@ -337,7 +340,7 @@ def commit_edit(profile, page, coordinate, path, original, doc, expected_sha256,
         action = doc['Actions'][coordinate]
         if not action.get('States'):
             action['States'] = [{}]
-        action['States'][0]['Image'] = icon
+        action['States'][state_index]['Image'] = icon
     backups.mkdir(parents=True, exist_ok=True)
     backup = backups / f'{profile}--{page or profile}--{time.time_ns()}.json'
     with backup.open('xb') as f:
