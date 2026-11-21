@@ -161,7 +161,9 @@ Omit `page` for the main page. The default preserves unlisted controls. Set `rep
 
 Run `streonor-mcp --http` to bind only to `http://127.0.0.1:29606/mcp`. Configure the Bearer token from the MCP data directory's `token.txt`. Keep it secret. Do not expose this port publicly. use stdio for the easiest local setup.
 
-Build a Windows executable with `pyinstaller STREONOR-MCP.spec` after installing PyInstaller separately. Existing `install.ps1` and `setup.cmd` install the executable, Windows sign-in shortcut and HTTP Codex entry. That installer is Windows-only. The portable Python package needs no startup service. The existing installer does not overwrite a pre-existing `streonor` client entry.
+**Experimental Windows executable.** Build with `pyinstaller STREONOR-MCP.spec` after installing PyInstaller separately. Place the built EXE next to `install.ps1` and run the script to copy it into `%LOCALAPPDATA%\STREONOR-MCP\app`. Start the installed EXE with `--http` and configure the client manually if you need the loopback server. For everyday use, follow the [stdio setup](../README.md#get-started).
+
+If you used an older installer and want to switch to stdio, remove the old STREONOR MCP Startup shortcut and replace its HTTP entry in your client configuration.
 
 ## Development and community devices
 
