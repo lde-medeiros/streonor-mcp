@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.8.0
 
 - Replace an occupied control by action name in one write. Apply preferred images for several states together and reuse prepared actions and icons on apply.
 - Opt in to fast managed restarts on Windows with `STREONOR_FAST_RESTART=1`.
