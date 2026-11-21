@@ -8,3 +8,11 @@ dist/
 *.exe
 
 *.egg-info/
+
+# Local credentials and personal device exports
+token.txt
+.env
+.env.*
+!.env.example
+*.[sS][dD][pP]rofile
+*.[sS]tream[dD]ock[pP]rofile
