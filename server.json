@@ -1,0 +1,21 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.lde-medeiros/streonor-mcp",
+  "title": "Streonor MCP",
+  "description": "Build STREONOR scenes, shortcuts, action flows, and icons from Claude or Codex.",
+  "repository": {
+    "url": "https://github.com/lde-medeiros/streonor-mcp",
+    "source": "github"
+  },
+  "version": "0.8.2",
+  "packages": [
+    {
+      "registryType": "pypi",
+      "identifier": "streonor-mcp",
+      "version": "0.8.2",
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ]
+}

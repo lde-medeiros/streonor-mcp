@@ -1,0 +1,61 @@
+name: Publish to PyPI and MCP Registry
+
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  pypi:
+    if: github.repository == 'lde-medeiros/streonor-mcp' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Download and verify GitHub release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          version="${tag#v}"
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          mkdir dist
+          for asset in "streonor_mcp-$version-py3-none-any.whl" "streonor_mcp-$version.tar.gz"; do
+            gh release download "$tag" --repo "$GITHUB_REPOSITORY" --pattern "$asset" --dir dist
+            digest=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$tag" | jq -er --arg asset "$asset" '.assets[] | select(.name == $asset) | .digest')
+            [[ "$digest" =~ ^sha256:[a-f0-9]{64}$ ]]
+            printf '%s  %s\n' "${digest#sha256:}" "dist/$asset" | sha256sum --check
+          done
+      - uses: pypa/gh-action-pypi-publish@ed0c53931b1dc9bd32cbe73a98c7f6766f8a527e # v1.13.0
+
+  registry:
+    needs: pypi
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      MCP_PUBLISHER_VERSION: v1.8.1
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+      - name: Verify and publish registry metadata
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          jq -e --arg version "$version" '.version == $version and all(.packages[]; .version == $version)' server.json
+          archive=mcp-publisher_linux_amd64.tar.gz
+          base="https://github.com/modelcontextprotocol/registry/releases/download/$MCP_PUBLISHER_VERSION"
+          curl -fsSL -o "$archive" "$base/$archive"
+          curl -fsSL -o "$archive.sigstore.json" "$base/$archive.sigstore.json"
+          cosign verify-blob --bundle "$archive.sigstore.json" \
+            --certificate-identity "https://github.com/modelcontextprotocol/registry/.github/workflows/release.yml@refs/tags/$MCP_PUBLISHER_VERSION" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com "$archive"
+          tar xzf "$archive" mcp-publisher
+          ./mcp-publisher login github-oidc
+          ./mcp-publisher publish

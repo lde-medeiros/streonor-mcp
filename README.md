@@ -1,5 +1,7 @@
 # STREONOR MCP
 
+<!-- mcp-name: io.github.lde-medeiros/streonor-mcp -->
+
 Set up your STREONOR stream controller from Claude or Codex. Build scenes, assign shortcuts, and choose icons by describing what you want.
 
 > “Make a Work scene with buttons for email, calendar, and GitHub. Copy the volume knob from Daily.”
@@ -10,19 +12,19 @@ An independent community project. Unaffiliated with STREONOR.
 
 ## Get started
 
-1. Install the STREONOR app on Windows, connect your STREONOR device, and make sure you have [uv](https://docs.astral.sh/uv/getting-started/installation/) and Git. While this repo is private, Git needs access to it.
+1. Install the STREONOR app on Windows, connect your STREONOR device, and make sure you have [uv](https://docs.astral.sh/uv/getting-started/installation/) and Git.
 2. Run the command for your client.
 
    **Codex**
 
    ```sh
-   codex mcp add streonor -- uvx --python 3.12 --from git+https://github.com/lde-medeiros/streonor-mcp@v0.8.1 streonor-mcp
+   codex mcp add streonor -- uvx --python 3.12 --from git+https://github.com/lde-medeiros/streonor-mcp@v0.8.2 streonor-mcp
    ```
 
    **Claude Code**
 
    ```sh
-   claude mcp add --transport stdio --scope user streonor -- uvx --python 3.12 --from git+https://github.com/lde-medeiros/streonor-mcp@v0.8.1 streonor-mcp
+   claude mcp add --transport stdio --scope user streonor -- uvx --python 3.12 --from git+https://github.com/lde-medeiros/streonor-mcp@v0.8.2 streonor-mcp
    ```
 
 3. Restart your client and ask: “Use STREONOR MCP to list my scenes.”
