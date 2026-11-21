@@ -12,22 +12,24 @@ An independent community project. Unaffiliated with STREONOR.
 
 ## Get started
 
-1. Install the STREONOR app on Windows, connect your STREONOR device, and make sure you have [uv](https://docs.astral.sh/uv/getting-started/installation/) and Git.
+1. Install the STREONOR app on Windows, connect your STREONOR device, and install [uv](https://docs.astral.sh/uv/getting-started/installation/).
 2. Run the command for your client.
 
    **Codex**
 
    ```sh
-   codex mcp add streonor -- uvx --python 3.12 --from git+https://github.com/lde-medeiros/streonor-mcp@v0.8.2 streonor-mcp
+   codex mcp add streonor -- uvx --python 3.12 streonor-mcp==0.8.2
    ```
 
    **Claude Code**
 
    ```sh
-   claude mcp add --transport stdio --scope user streonor -- uvx --python 3.12 --from git+https://github.com/lde-medeiros/streonor-mcp@v0.8.2 streonor-mcp
+   claude mcp add --transport stdio --scope user streonor -- uvx --python 3.12 streonor-mcp==0.8.2
    ```
 
 3. Restart your client and ask: “Use STREONOR MCP to list my scenes.”
+
+The commands install from [PyPI](https://pypi.org/project/streonor-mcp/) without Git.
 
 [Claude Desktop and other clients](docs/reference.md#connect-claude-or-codex) · [macOS and Linux exported profiles](docs/reference.md#platform-support-and-paths)
 
