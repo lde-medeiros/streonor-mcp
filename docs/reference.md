@@ -6,7 +6,7 @@ Community MCP tools for STREONOR profiles, actions, knobs and icons. Use the sam
 
 ## Quick start
 
-Python 3.12+ is required. Clone this repository (GitHub authentication is required while private), then install in a virtual environment:
+For normal installation, use [the PyPI setup commands](../README.md#get-started). To develop from source, clone the repository and install in a Python 3.12+ virtual environment:
 
 ```sh
 git clone https://github.com/lde-medeiros/streonor-mcp.git
@@ -18,7 +18,7 @@ python -m venv .venv
 .venv/bin/python -m pip install -e .
 ```
 
-The installed entry point is `.venv\Scripts\streonor-mcp.exe` on Windows and `.venv/bin/streonor-mcp` on macOS/Linux. Use its **absolute path** in clients so no shell activation or working directory is required. No PyPI release is published. `pip install streonor-mcp` is not the setup instruction yet.
+The installed entry point is `.venv\Scripts\streonor-mcp.exe` on Windows and `.venv/bin/streonor-mcp` on macOS/Linux. Use its **absolute path** in clients so no shell activation or working directory is required.
 
 ## Connect Claude or Codex
 
@@ -50,6 +50,20 @@ Claude Desktop JSON configuration:
 ```
 
 On Windows, use a JSON-escaped path such as `C:\\path\\streonor-mcp\\.venv\\Scripts\\streonor-mcp.exe`. Merge the entry into your existing configuration instead of replacing other servers.
+
+To run the published package without cloning the repository, install [uv](https://docs.astral.sh/uv/getting-started/installation/) and use this entry instead:
+
+```json
+{
+  "mcpServers": {
+    "streonor": {
+      "command": "uvx",
+      "args": ["--python", "3.12", "streonor-mcp==0.8.2"]
+    }
+  }
+}
+```
+
 
 Codex TOML alternative:
 
