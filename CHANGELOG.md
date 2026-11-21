@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.8.2
+
+- Add package metadata for the official MCP Registry and prepare PyPI distribution.
+- Update the setup guide for the public repository.
+
 ## 0.8.1
 
 - Fix scene archive validation on macOS when the temporary directory resolves to a different path.
