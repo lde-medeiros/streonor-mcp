@@ -15,7 +15,7 @@ containing private data. Keep pull requests focused and preserve existing user c
 ## Make a release
 
 1. Squash merge the release PR into `main`. Set the new version in `pyproject.toml`, the CLI, `server.json`, and the pinned install examples. Add the matching version heading and notes to `CHANGELOG.md`.
-2. After **Checks** passes on the merged commit, run **Prepare draft release** from `main` in GitHub Actions. It builds the wheel and source archive, validates both, and attaches them to a GitHub release draft targeting that exact commit.
+2. After **Checks** passes on the merged commit, **Prepare draft release** starts automatically. For a new version, it builds and validates the wheel and source archive and attaches them to a draft targeting that exact commit. For a retry, run the workflow from `main` in GitHub Actions.
 3. Review the draft, then publish it as a stable release. GitHub creates the tag if needed. The publishing workflow checks CI and the attachment digests, uploads to PyPI, and then updates the MCP Registry. Tag pushes and prereleases do not upload packages.
 
 If a publishing job fails, rerun only the failed jobs from the Actions run. If PyPI already has the version after a partial upload, inspect its files before retrying.
