@@ -284,7 +284,7 @@ def main():
     import argparse
     parser = argparse.ArgumentParser(description='Community STREONOR MCP server')
     parser.add_argument('--http', action='store_true', help='Serve authenticated HTTP on localhost:29606 (default: stdio)')
-    parser.add_argument('--version', action='version', version='streonor-mcp 0.8.2')
+    parser.add_argument('--version', action='version', version='streonor-mcp 0.8.3')
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO)
     if args.http:

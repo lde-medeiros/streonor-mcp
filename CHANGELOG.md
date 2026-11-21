@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.8.3
 
 - Edit or clear existing scene pages in a single batch, or create a named scene with copied knobs and fully configured new controls.
 - Find installed Steam titles and add launch keys by app ID without hand-writing URLs.
