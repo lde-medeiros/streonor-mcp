@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.0
+
+- Release-pinned uvx setup for Claude, Codex and JSON clients.
+- Cross-process edit locks and preflight validation before closing the vendor app.
+- Bounded input reads, image pixel limits and strict JSON numbers.
+- Atomic, non-overwriting image output; uncommitted icon cleanup.
+- Fail-closed token validation and duplicate Authorization header rejection.
+- Protocol tests covering all tools plus HTTP and concurrent-editor regression tests.
+
 ## 0.2.0
 
 - Standard Python package and `streonor-mcp` command for local stdio clients.

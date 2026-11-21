@@ -10,6 +10,7 @@ from mcp.server.fastmcp import FastMCP
 from . import profiles
 from .app import edit_with_restart
 from .paths import data_dir
+from .locking import edit_lock
 from mcp.types import ToolAnnotations
 from .devices import DEVICES, describe
 
@@ -60,7 +61,11 @@ def preview_setting_change(profile: str, coordinate: str, setting: str, new_valu
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=True, openWorldHint=False))
 def apply_setting_change(profile: str, coordinate: str, setting: str, new_value: object, expected_sha256: str, page: str = '', manage_app: bool = False, force_close: bool = False) -> dict:
     """Apply a previewed setting edit with backup. manage_app=True closes and reopens STREONOR; force_close=True can discard unsaved app edits. A changed hash requires a new preview."""
-    return edit_with_restart(lambda: profiles.apply(profile, page or None, coordinate, setting, new_value, expected_sha256), manage_app, force_close)
+    with edit_lock(profiles.ROOT):
+        preview = profiles.prepare(profile, page or None, coordinate, setting, new_value)
+        if preview['sha256'] != expected_sha256:
+            raise ValueError('Profile changed since preview; inspect and preview again')
+        return edit_with_restart(lambda: profiles.apply(profile, page or None, coordinate, setting, new_value, expected_sha256), manage_app, force_close)
 
 
 
@@ -72,10 +77,19 @@ def preview_action_change(profile: str, operation: str, coordinate: str, source_
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=True, openWorldHint=False))
 def apply_action_change(profile: str, operation: str, coordinate: str, expected_sha256: str, source_coordinate: str = '', image_path: str = '', expected_image_sha256: str = '', page: str = '', manage_app: bool = False, force_close: bool = False) -> dict:
     """Apply a previewed action/icon edit with backup. manage_app=True closes and reopens STREONOR. force_close=True can discard unsaved app edits. Imports become 1254 x 1254 PNG."""
-    return edit_with_restart(lambda: profiles.apply_action(profile, page or None, operation, coordinate, expected_sha256, source_coordinate, image_path, expected_image_sha256), manage_app, force_close)
+    with edit_lock(profiles.ROOT):
+        preview = profiles.prepare_action(profile, page or None, operation, coordinate, source_coordinate, image_path)
+        if preview['sha256'] != expected_sha256 or (operation in ('set_icon', 'use_existing_icon') and preview['image_sha256'] != expected_image_sha256):
+            raise ValueError('Profile or icon changed since preview; inspect and preview again')
+        return edit_with_restart(lambda: profiles.apply_action(profile, page or None, operation, coordinate, expected_sha256, source_coordinate, image_path, expected_image_sha256), manage_app, force_close)
 
 
 def token():
+    with edit_lock(DATA):
+        return _token()
+
+
+def _token():
     DATA.mkdir(parents=True, exist_ok=True, mode=0o700)
     path = DATA / 'token.txt'
     if not path.exists():
@@ -85,29 +99,37 @@ def token():
                 f.write(secrets.token_urlsafe(32))
         except FileExistsError:
             pass
-    return path.read_text(encoding='ascii').strip()
+    value = path.read_text(encoding='ascii').strip()
+    if len(value) < 32 or not value.isascii() or any(c.isspace() for c in value):
+        raise RuntimeError('Invalid HTTP token file; restore a valid token or remove it to regenerate credentials')
+    return value
+
+
+def authenticated_app(app, secret):
+    """Authenticate every HTTP route before passing it to the MCP application."""
+    from starlette.responses import PlainTextResponse
+    expected = ('Bearer ' + secret).encode('ascii')
+    async def protected(scope, receive, send):
+        if scope['type'] == 'http':
+            headers = [value for name, value in scope['headers'] if name.lower() == b'authorization']
+            if len(headers) != 1 or not hmac.compare_digest(headers[0], expected):
+                await PlainTextResponse('Unauthorized', status_code=401)(scope, receive, send)
+                return
+        await app(scope, receive, send)
+    return protected
 
 
 def main():
     import argparse
     parser = argparse.ArgumentParser(description='Community STREONOR MCP server')
     parser.add_argument('--http', action='store_true', help='Serve authenticated HTTP on localhost:29606 (default: stdio)')
-    parser.add_argument('--version', action='version', version='streonor-mcp 0.2.0')
+    parser.add_argument('--version', action='version', version='streonor-mcp 0.3.0')
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO)
     if args.http:
         import uvicorn
-        from starlette.responses import PlainTextResponse
         app = mcp.streamable_http_app()
-        secret = ('Bearer ' + token()).encode('ascii')
-        async def protected(scope, receive, send):
-            if scope['type'] == 'http':
-                auth = dict(scope['headers']).get(b'authorization', b'')
-                if not hmac.compare_digest(auth, secret):
-                    await PlainTextResponse('Unauthorized', status_code=401)(scope, receive, send)
-                    return
-            await app(scope, receive, send)
-        uvicorn.run(protected, host='127.0.0.1', port=29606, log_level='warning')
+        uvicorn.run(authenticated_app(app, token()), host='127.0.0.1', port=29606, log_level='warning')
     else:
         mcp.run(transport='stdio')
 

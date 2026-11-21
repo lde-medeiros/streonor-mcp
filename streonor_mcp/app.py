@@ -4,10 +4,13 @@ from pathlib import Path
 import subprocess
 import time
 import sys
+import logging
 from . import profiles
 
 
 def edit_with_restart(edit, manage_app=False, force_close=False):
+    if force_close and not manage_app:
+        raise ValueError('force_close requires manage_app=True')
     if manage_app and sys.platform != 'win32':
         raise RuntimeError('Automatic app restart is only verified on Windows; close the vendor app manually and use manage_app=False')
     if not manage_app or not profiles.vendor_running():
@@ -16,6 +19,7 @@ def edit_with_restart(edit, manage_app=False, force_close=False):
     if not exe.is_file():
         raise RuntimeError('Cannot find STREONOR executable to reopen; no edit attempted')
     result = None
+    failure = None
     try:
         # Force is opt-in because it can discard changes held only in memory.
         command = ['taskkill', '/IM', 'Streonor.exe']
@@ -32,16 +36,22 @@ def edit_with_restart(edit, manage_app=False, force_close=False):
         # The existing hash check catches changes saved by the app during exit.
         result = edit()
         return result
+    except Exception as error:
+        failure = error
+        raise
     finally:
-        if not profiles.vendor_running():
-            try:
+        try:
+            if not profiles.vendor_running():
                 # Keep the app alive when a stdio MCP client ends its process job.
                 flags = getattr(subprocess, 'DETACHED_PROCESS', 0) | getattr(subprocess, 'CREATE_NEW_PROCESS_GROUP', 0) | getattr(subprocess, 'CREATE_BREAKAWAY_FROM_JOB', 0)
                 subprocess.Popen([str(exe)], cwd=str(exe.parent), creationflags=flags)
                 if result is not None:
                     result['app_relaunch_requested'] = True
-            except OSError as error:
-                if result is not None:
-                    result['app_relaunch_requested'] = False
-                    result['relaunch_error'] = str(error)
+        except (OSError, subprocess.SubprocessError) as error:
+            logging.getLogger(__name__).error('Could not relaunch STREONOR: %s', error)
+            if result is not None:
+                result['app_relaunch_requested'] = False
+                result['relaunch_error'] = str(error)
+            elif failure is not None:
+                failure.add_note(f'Could not relaunch STREONOR: {error}')
 
