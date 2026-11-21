@@ -1,5 +1,13 @@
 # Validation
 
+## Current release candidate
+
+GitHub Actions runs the test suite on Windows, macOS, and Linux with Python 3.12 and 3.13. The installer hardening and macOS archive fix passed all six jobs on [main](https://github.com/lde-medeiros/streonor-mcp/actions/runs/44936591524).
+
+Live icon editing is experimental. On the S6 Mini, the Windows app reached the correct icon picker for a Gaming Hotkey Switch state in a dry run. The dry run stopped before saving. LCD rendering after a live edit and physical Hotkey Switch behavior still need confirmation.
+
+## Historical validation
+
 The 0.6.0 test suite exercises all 16 exposed tools through a real stdio MCP session
 against disposable profiles and image fixtures. Personal device configurations are not used.
 
