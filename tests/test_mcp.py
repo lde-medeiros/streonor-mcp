@@ -39,8 +39,17 @@ class MCPTests(unittest.IsolatedAsyncioTestCase):
             plugin = root / 'plugins' / 'fixture.sdPlugin'
             plugin.mkdir(parents=True)
             (plugin / 'manifest.json').write_text(json.dumps({'Name': 'Fixture', 'Actions': [{'Name': 'Website', 'UUID': 'website'}, {'Name': 'Hotkey fixture', 'UUID': 'com.hotspot.streamdock.system.hotkey', 'Controllers': ['Keypad', 'Knob']}]}))
-            # Process lifecycle is simulated; never close or edit the user's app.
-            params = StdioServerParameters(command=sys.executable, args=['-c', 'from streonor_mcp import profiles, server; profiles.vendor_running = lambda: False; server.main()'], env={'STREONOR_DATA_DIR': str(root / 'data'), 'STREONOR_PROFILES_DIR': str(root / 'profiles'), 'STREONOR_ICONS_DIR': str(icons)})
+            # Simulate the native importer and process lifecycle.
+            stub = (
+                'from streonor_mcp import profiles, server, live; '
+                'profiles.vendor_running = lambda: False; '
+                'live.import_scene = lambda profile, root, name, edits, hashes, images: '
+                'dict(pages=edits, images=len(images)); server.main()'
+            )
+            params = StdioServerParameters(command=sys.executable, args=['-c', stub], env={
+                'STREONOR_DATA_DIR': str(root / 'data'), 'STREONOR_PROFILES_DIR': str(root / 'profiles'),
+                'STREONOR_ICONS_DIR': str(icons),
+            })
             async with stdio_client(params) as (read, write):
                 async with ClientSession(read, write) as session:
                     await session.initialize()
@@ -138,6 +147,32 @@ class MCPTests(unittest.IsolatedAsyncioTestCase):
                     keys = doc['Actions']['1,1']['Settings']['Hotkeys']
                     self.assertEqual([key['VKeyCode'] for key in keys], [80, -1, -1])
                     self.assertTrue(keys[0]['KeyCtrl'] and keys[0]['KeyShift'])
+                    replacement = dict(profile=profile, operation='replace_by_name', coordinate='1,1',
+                                       action_name='HotkeySwitch', hotkey='Ctrl+Shift+M',
+                                       state_images={'0': str(source), '1': str(icons / 'test.png')})
+                    preview = (await call('preview_action_change', **replacement))[0]
+                    self.assertEqual(preview['replaces'], 'Hotkey fixture')
+                    self.assertNotIn('auto_icon', preview)
+                    hashes = preview['state_image_sha256']
+                    bad = await session.call_tool('apply_action_change', {
+                        **replacement, 'expected_sha256': preview['sha256'],
+                        'expected_state_image_sha256': {**hashes, '1': '0' * 64},
+                    })
+                    self.assertTrue(bad.isError)
+                    await call('apply_action_change', **replacement, expected_sha256=preview['sha256'],
+                               expected_state_image_sha256=hashes)
+                    replaced = (await call('read_profile', profile=profile))[0]['profile']['Actions']['1,1']
+                    self.assertTrue(replaced['UUID'].endswith('hotkeySwitch'))
+                    self.assertEqual([key['VKeyCode'] for key in replaced['Settings']['Hotkeys']], [77, 77, -1])
+                    for state, color in zip(replaced['States'], [(255, 0, 0), (0, 0, 255)]):
+                        with Image.open(folder / 'Images' / state['Image']) as image:
+                            self.assertEqual(image.getpixel((627, 627))[:3], color)
+                    preserved = {k: v for k, v in replacement.items() if k != 'state_images'}
+                    preview = (await call('preview_action_change', **preserved))[0]
+                    self.assertNotIn('auto_icon', preview)
+                    await call('apply_action_change', **preserved, expected_sha256=preview['sha256'])
+                    current = (await call('read_profile', profile=profile))[0]['profile']['Actions']['1,1']
+                    self.assertEqual(current['States'], replaced['States'])
                     backup_name = Path(saved['backup']).name
                     restore = (await call('preview_control_restore', profile=profile, backup_name=backup_name))[0]
                     self.assertEqual(restore['changed_coordinates'], ['1,1'])
@@ -157,4 +192,30 @@ class MCPTests(unittest.IsolatedAsyncioTestCase):
                     reordered = (await call('read_profile', profile=profile))[0]['profile']
                     self.assertEqual(reordered['Pages'], {'Current': profile, 'Pages': order})
                     self.assertEqual(reordered['Actions'], restored['Actions'])
+                    args = dict(profile=profile, name='Live layout', pages=[
+                        {'replace': True, 'controls': {
+                            '0,0': {'action_name': 'website', 'settings': {'path': 'https://layout.test'}},
+                            '1,0': {'action_name': 'Hotkey fixture', 'hotkey': 'Ctrl+P', 'auto_icon': False},
+                            '0,1': {'action_name': 'HotkeySwitch', 'hotkey': 'Ctrl+M',
+                                    'state_index': 1, 'icon_query': 'Muted'},
+                            '2,0': {'flow_title': 'Two steps', 'auto_icon': False, 'flow_steps': [
+                                {'source_coordinate': '0,0'},
+                                {'action_name': 'Hotkey fixture', 'hotkey': 'Ctrl+P', 'delay_ms': 100},
+                            ]},
+                        }},
+                        {'page': page, 'controls': {'2,0': {'action_name': 'website', 'auto_icon': False}}},
+                    ])
+                    layout = (await call('preview_scene_layout', **args))[0]
+                    self.assertIn('3,0', layout['pages'][profile]['cleared'])
+                    stale = await session.call_tool('apply_scene_layout', {**args, 'expected_layout_sha256': '0' * 64})
+                    self.assertTrue(stale.isError)
+                    batch = (await call('apply_scene_layout', **args, expected_layout_sha256=layout['layout_sha256']))[0]
+                    layout_actions = batch['pages'][profile]['Actions']
+                    self.assertEqual(set(layout_actions), {'0,0', '1,0', '2,0', '0,1'})
+                    self.assertTrue(layout_actions['0,1']['States'][1]['Image'].endswith('.png'))
+                    self.assertFalse(layout_actions['0,1']['States'][0]['Image'].endswith('.png'))
+                    self.assertEqual([child['Settings']['delay'] for child in layout_actions['2,0']['Actions']], [0, 100])
+                    self.assertEqual(set(batch['pages'][page]['Actions']), {'2,0'})
+                    self.assertEqual(batch['images'], 2)
+                    self.assertEqual((await call('read_profile', profile=profile))[0]['profile'], reordered)
                     self.assertEqual(set(tools), called, 'Every exposed MCP tool must be exercised')

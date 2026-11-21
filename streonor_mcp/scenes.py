@@ -29,11 +29,16 @@ def registry_hash(connection, device):
     return profiles.fingerprint(json.dumps(rows, ensure_ascii=False).encode())
 
 
-def preview(source_profile, name, root=profiles.ROOT, include_coordinates=None):
+def validate_new_name(name, root):
     if not isinstance(name, str) or not name.strip() or len(name) > 80 or any(ord(c) < 32 for c in name):
         raise ValueError('Scene name must be 1 to 80 printable characters')
     if any((p.get('name') or '').casefold() == name.strip().casefold() for p in profiles.list_profiles(root)):
         raise ValueError('A scene with this name already exists')
+    return name.strip()
+
+
+def preview(source_profile, name, root=profiles.ROOT, include_coordinates=None):
+    name = validate_new_name(name, root)
     source, digest = profiles.read_manifest(source_profile, root=root)
     spec = get_device(source.get('DeviceUUID'))
     if not spec.supported:
@@ -45,7 +50,7 @@ def preview(source_profile, name, root=profiles.ROOT, include_coordinates=None):
     path = catalog(root, device)
     with closing(sqlite3.connect(path.as_uri() + '?mode=ro', uri=True)) as connection:
         registry = registry_hash(connection, device)
-    return {'source_profile': source_profile, 'name': name.strip(), 'device': device, 'source_sha256': digest, 'registry_sha256': registry, 'blank': not selected, 'include_coordinates': selected}
+    return {'source_profile': source_profile, 'name': name, 'device': device, 'source_sha256': digest, 'registry_sha256': registry, 'blank': not selected, 'include_coordinates': selected}
 
 
 def create(source_profile, name, expected_source_sha256, expected_registry_sha256, root=profiles.ROOT, backups=profiles.BACKUPS, include_coordinates=None):
