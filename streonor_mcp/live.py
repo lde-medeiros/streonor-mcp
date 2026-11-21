@@ -106,15 +106,15 @@ def page_member(profile, page):
     return Path('manifest.json') if page == profile else Path('profiles', page, 'manifest.json')
 
 
-def import_copy(profile, page, path, doc, expected_sha256, root, name, icon, icon_data):
+def import_copy(profile, page, path, doc, expected_sha256, root, name, files):
     page = page or profile
     relative = page_member(profile, page)
     if path != root.resolve() / profile / relative:
         raise ValueError('Live imports require a page stored directly in its scene')
-    images = {relative.parent / 'Images' / icon: icon_data} if icon else {}
+    images = {relative.parent / 'Images' / name: data for name, data in files.items()}
     result = import_scene(profile, root, name, {page: doc}, {page: expected_sha256}, images)
     imported = result['pages'][page]
-    return {**result, 'page': imported['id'], 'new_sha256': imported['sha256'], 'icon': icon}
+    return {**result, 'page': imported['id'], 'new_sha256': imported['sha256']}
 
 
 def import_scene(profile, root, name, edits, source_hashes, images):

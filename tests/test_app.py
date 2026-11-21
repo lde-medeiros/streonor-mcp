@@ -15,10 +15,18 @@ class AppTests(unittest.TestCase):
 
     def test_force_close_and_relaunch(self):
         with patch('streonor_mcp.app.profiles.vendor_running', side_effect=[True, False, False, False]), patch('streonor_mcp.app.Path.is_file', return_value=True), patch('streonor_mcp.app.subprocess.run') as run, patch('streonor_mcp.app.subprocess.Popen') as launch:
+            launch.return_value.wait.return_value = 0
             result = edit_with_restart(lambda: {'updated': True}, True, True)
             self.assertIn('/F', run.call_args.args[0])
             self.assertTrue(result['app_relaunch_requested'])
             launch.assert_called_once()
+
+    @patch.dict('streonor_mcp.app.os.environ', {'STREONOR_FAST_RESTART': '1'})
+    def test_fast_restart_preference_for_managed_edits(self):
+        with patch('streonor_mcp.app.profiles.vendor_running', side_effect=[True, False, False]), patch('streonor_mcp.app.Path.is_file', return_value=True), patch('streonor_mcp.app.subprocess.run') as run, patch('streonor_mcp.app.subprocess.Popen') as launch:
+            launch.return_value.wait.return_value = 0
+            edit_with_restart(lambda: {'updated': True}, manage_app=True)
+        self.assertIn('/F', run.call_args.args[0])
 
     def test_opt_out_does_not_touch_app(self):
         with patch('streonor_mcp.app.subprocess.run') as run:
@@ -27,6 +35,7 @@ class AppTests(unittest.TestCase):
 
     def test_restart_after_failed_edit(self):
         with patch('streonor_mcp.app.profiles.vendor_running', side_effect=[True, False, False, False]), patch('streonor_mcp.app.Path.is_file', return_value=True), patch('streonor_mcp.app.subprocess.run'), patch('streonor_mcp.app.subprocess.Popen') as launch:
+            launch.return_value.wait.return_value = 0
             with self.assertRaises(ValueError):
                 edit_with_restart(Mock(side_effect=ValueError('changed hash')), True)
             launch.assert_called_once()

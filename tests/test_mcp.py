@@ -147,6 +147,32 @@ class MCPTests(unittest.IsolatedAsyncioTestCase):
                     keys = doc['Actions']['1,1']['Settings']['Hotkeys']
                     self.assertEqual([key['VKeyCode'] for key in keys], [80, -1, -1])
                     self.assertTrue(keys[0]['KeyCtrl'] and keys[0]['KeyShift'])
+                    replacement = dict(profile=profile, operation='replace_by_name', coordinate='1,1',
+                                       action_name='HotkeySwitch', hotkey='Ctrl+Shift+M',
+                                       state_images={'0': str(source), '1': str(icons / 'test.png')})
+                    preview = (await call('preview_action_change', **replacement))[0]
+                    self.assertEqual(preview['replaces'], 'Hotkey fixture')
+                    self.assertNotIn('auto_icon', preview)
+                    hashes = preview['state_image_sha256']
+                    bad = await session.call_tool('apply_action_change', {
+                        **replacement, 'expected_sha256': preview['sha256'],
+                        'expected_state_image_sha256': {**hashes, '1': '0' * 64},
+                    })
+                    self.assertTrue(bad.isError)
+                    await call('apply_action_change', **replacement, expected_sha256=preview['sha256'],
+                               expected_state_image_sha256=hashes)
+                    replaced = (await call('read_profile', profile=profile))[0]['profile']['Actions']['1,1']
+                    self.assertTrue(replaced['UUID'].endswith('hotkeySwitch'))
+                    self.assertEqual([key['VKeyCode'] for key in replaced['Settings']['Hotkeys']], [77, 77, -1])
+                    for state, color in zip(replaced['States'], [(255, 0, 0), (0, 0, 255)]):
+                        with Image.open(folder / 'Images' / state['Image']) as image:
+                            self.assertEqual(image.getpixel((627, 627))[:3], color)
+                    preserved = {k: v for k, v in replacement.items() if k != 'state_images'}
+                    preview = (await call('preview_action_change', **preserved))[0]
+                    self.assertNotIn('auto_icon', preview)
+                    await call('apply_action_change', **preserved, expected_sha256=preview['sha256'])
+                    current = (await call('read_profile', profile=profile))[0]['profile']['Actions']['1,1']
+                    self.assertEqual(current['States'], replaced['States'])
                     backup_name = Path(saved['backup']).name
                     restore = (await call('preview_control_restore', profile=profile, backup_name=backup_name))[0]
                     self.assertEqual(restore['changed_coordinates'], ['1,1'])

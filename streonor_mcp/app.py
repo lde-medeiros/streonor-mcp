@@ -8,6 +8,27 @@ import logging
 from . import profiles
 
 
+def _request_relaunch(exe):
+    # Launch through the desktop shell so the app outlives the MCP process.
+    launch = subprocess.Popen(
+        ['powershell.exe', '-NoProfile', '-NonInteractive', '-Command',
+         "$ErrorActionPreference = 'Stop'; "
+         "$shell = New-Object -ComObject Shell.Application; $handle = 0; "
+         "$desktop = $shell.Windows().FindWindowSW(0, 0, 8, [ref]$handle, 1); "
+         "if ($null -eq $desktop) { throw 'Missing desktop shell' }; "
+         "$exe = $env:STREONOR_RELAUNCH_EXE; "
+         "$desktop.Document.Application.ShellExecute($exe, '', (Split-Path -LiteralPath $exe), 'open', 1); "
+         "for ($i = 0; $i -lt 30; $i++) { "
+         "if (Get-Process Streonor -ErrorAction SilentlyContinue) { exit 0 }; "
+         "Start-Sleep -Milliseconds 100 }; throw 'STREONOR did not start'"],
+        env={**os.environ, 'STREONOR_RELAUNCH_EXE': str(exe)},
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    if launch.wait(timeout=5) != 0:
+        raise OSError('Windows could not start STREONOR')
+
+
 def edit_with_restart(edit, manage_app=False, force_close=False):
     if force_close and not manage_app:
         raise ValueError('force_close requires manage_app=True')
@@ -21,9 +42,9 @@ def edit_with_restart(edit, manage_app=False, force_close=False):
     result = None
     failure = None
     try:
-        # Force is opt-in because it can discard changes held only in memory.
+        # Fast restart is opt-in because it can discard changes held only in memory.
         command = ['taskkill', '/IM', 'Streonor.exe']
-        if force_close:
+        if force_close or os.environ.get('STREONOR_FAST_RESTART') == '1':
             command.append('/F')
         subprocess.run(command, capture_output=True, timeout=10,
                        creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0), check=True)
@@ -31,7 +52,7 @@ def edit_with_restart(edit, manage_app=False, force_close=False):
             if not profiles.vendor_running():
                 break
             time.sleep(0.25)
-        if profiles.vendor_running():
+        else:
             raise RuntimeError('STREONOR did not exit; no edit attempted')
         # The existing hash check catches changes saved by the app during exit.
         result = edit()
@@ -42,9 +63,7 @@ def edit_with_restart(edit, manage_app=False, force_close=False):
     finally:
         try:
             if not profiles.vendor_running():
-                # Keep the app alive when a stdio MCP client ends its process job.
-                flags = getattr(subprocess, 'DETACHED_PROCESS', 0) | getattr(subprocess, 'CREATE_NEW_PROCESS_GROUP', 0) | getattr(subprocess, 'CREATE_BREAKAWAY_FROM_JOB', 0)
-                subprocess.Popen([str(exe)], cwd=str(exe.parent), creationflags=flags)
+                _request_relaunch(exe)
                 if result is not None:
                     result['app_relaunch_requested'] = True
         except (OSError, subprocess.SubprocessError) as error:
