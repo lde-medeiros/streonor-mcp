@@ -135,8 +135,8 @@ Some actions require plugin-specific settings, connections, or a compatible cont
 
 The agent reads the target, previews the change, and applies it using the returned hashes.
 
-- **Windows live scene copies (unreleased):** Update an action, setting, or icon while STREONOR stays open. Fill an entire page or edit several pages in one import. Open the new scene by its name in STREONOR. [Live editing workflow](docs/reference.md#edit-while-streonor-stays-open).
-- **Windows live in-place icon edit (unreleased):** Set or reset keypad and Scene Shift icons on the selected S6 Mini scene and keep its name and ID. [Setup and supported controls](docs/reference.md#edit-while-streonor-stays-open).
+- **Windows live scene copies:** Update an action, setting, or icon while STREONOR stays open. Fill an entire page or edit several pages in one import. Open the new scene by its name in STREONOR. [Live editing workflow](docs/reference.md#edit-while-streonor-stays-open).
+- **Windows live in-place icon edit:** Set or reset keypad and Scene Shift icons on the selected S6 Mini scene and keep its name and ID. [Setup and supported controls](docs/reference.md#edit-while-streonor-stays-open).
 - **Other in-place edits:** Close STREONOR first or request `manage_app=true` on Windows to close and reopen it. Use `force_close=true` only if you accept losing unsaved app settings.
 
 In-place edits retain backups. Scene deletion retains the scene folder and catalog backup. Icons are saved as **1254 × 1254 square PNGs**.
@@ -145,12 +145,12 @@ In-place edits retain backups. Scene deletion retains the scene folder and catal
 
 | Product photo | Model | MCP support |
 | --- | --- | --- |
-| [View photo](https://streonor.net/cdn/shop/files/S6_Mini_Black_White_Website_Main_V3.png?v=1784532906&width=320) | **S6 Mini** | Supported and tested on Windows |
-| [View photo](https://streonor.net/cdn/shop/files/S10_Pro_Black_Website_Main_V2.png?v=1784533717&width=320) | S10 Pro | [Contribute today](CONTRIBUTING.md) |
-| [View photo](https://streonor.net/cdn/shop/files/S15_1.jpg?v=1776650323&width=320) | S15 Standard | [Contribute today](CONTRIBUTING.md) |
-| [View photo](https://streonor.net/cdn/shop/files/32_-2.jpg?v=1794382927&width=320) | S32 Max | [Contribute today](CONTRIBUTING.md) |
+| <img src="https://streonor.net/cdn/shop/files/S6_Mini_Black_White_Website_Main_V3.png?v=1784532906&amp;width=320" alt="STREONOR S6 Mini" width="128"> | **S6 Mini** | Supported and tested on Windows |
+| <img src="https://streonor.net/cdn/shop/files/S10_Pro_Black_Website_Main_V2.png?v=1784533717&amp;width=320" alt="STREONOR S10 Pro" width="128"> | S10 Pro | [Contribute today](CONTRIBUTING.md) |
+| <img src="https://streonor.net/cdn/shop/files/S15_1.jpg?v=1776650323&amp;width=320" alt="STREONOR S15 Standard" width="128"> | S15 Standard | [Contribute today](CONTRIBUTING.md) |
+| <img src="https://streonor.net/cdn/shop/files/32_-2.jpg?v=1794382927&amp;width=320" alt="STREONOR S32 Max" width="128"> | S32 Max | [Contribute today](CONTRIBUTING.md) |
 
-Product photo links open the [STREONOR storefront’s](https://streonor.net/) image files.
+Product photos are served by the [STREONOR storefront](https://streonor.net/).
 
 ## Platforms and limits
 
