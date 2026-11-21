@@ -9,8 +9,10 @@ from pydantic import BaseModel, ConfigDict
 
 from . import live, profiles, scenes
 from .catalog import build_action
+from .devices import DEVICES
 from .flows import build_flow
 from .icons import for_action
+from .steam import app_id_from_action
 
 
 class ControlEdit(BaseModel):
@@ -22,6 +24,7 @@ class ControlEdit(BaseModel):
     hotkey: str = ''
     steam_app_id: str = ''
     title: str = ''
+    show_title: bool | None = None
     flow_steps: list[dict] | None = None
     flow_title: str = ''
     state_index: int = 0
@@ -46,21 +49,20 @@ def _preview_action(action):
     return result
 
 
-def plan(profile, name, pages, root, mode='auto', include_coordinates=None):
-    if not profiles.PROFILE_ID.fullmatch(profile):
-        matches = [p['id'] for p in profiles.list_profiles(root)
-                   if (p['name'] or '').casefold() == profile.strip().casefold()]
-        if len(matches) != 1:
-            raise ValueError('Choose an unambiguous scene name or ID from list_profiles')
-        profile = matches[0]
-    if not 1 <= len(pages) <= 16 or sum(len(p.controls) for p in pages) > 128:
-        raise ValueError('Provide 1 to 16 pages and at most 128 control edits')
+def plan(profile, name, pages, root, mode='auto', include_coordinates=None, clear_all=False):
+    profile = profiles.resolve_scene(profile, root)
     root_doc, root_hash, order = live.scene_pages(profile, root)
     current_name = root_doc.get('Name', '')
     if mode == 'auto':
         mode = 'edit' if not name or name.strip().casefold() == current_name.casefold() else 'copy'
     if mode not in ('edit', 'copy', 'create'):
         raise ValueError('Layout mode must be auto, edit, copy or create')
+    if clear_all:
+        if pages or mode != 'edit':
+            raise ValueError('clear_all is only for editing an existing scene without pages')
+        pages = [PageEdit(page=page, replace=True, controls={}) for page in order]
+    if not pages or len(pages) > 16 or sum(len(page.controls) for page in pages) > 128:
+        raise ValueError('Provide 1 to 16 pages and at most 128 control edits, or use clear_all')
     if mode == 'edit':
         if name and name.strip().casefold() != current_name.casefold():
             raise ValueError('Use apply_scene_change to rename an existing scene')
@@ -82,6 +84,7 @@ def plan(profile, name, pages, root, mode='auto', include_coordinates=None):
     image_bytes = 0
     installed = None
     source_hashes = {profile: root_hash}
+    keypad = next((d.keypad_coordinates for d in DEVICES if root_doc.get('DeviceUUID') in d.software_ids), ())
     for update in pages:
         page = update.page or profile
         if page not in order or page in edits:
@@ -100,7 +103,7 @@ def plan(profile, name, pages, root, mode='auto', include_coordinates=None):
         keep = set(update.keep_coordinates)
         if keep and (not update.replace or not keep <= before.keys() or keep & update.controls.keys()):
             raise ValueError('keep_coordinates must select existing, unedited controls on a replaced page')
-        actions = {key: before[key] for key in keep} if update.replace else dict(before)
+        actions = {key: before[key] for key in keep} if update.replace and seed is None else dict(before)
         changes = {}
         for coordinate, control in update.controls.items():
             if not re.fullmatch(r'(0|[1-9][0-9]{0,2}),(0|[1-9][0-9]{0,2})', coordinate):
@@ -113,6 +116,8 @@ def plan(profile, name, pages, root, mode='auto', include_coordinates=None):
                 changes[coordinate] = {'operation': 'remove'}
                 continue
             if control.steam_app_id:
+                if keypad and coordinate not in keypad:
+                    raise ValueError(f'Steam launches require a keypad slot. Use one of: {", ".join(keypad)}')
                 if (not re.fullmatch(r'[1-9][0-9]{0,9}', control.steam_app_id)
                         or int(control.steam_app_id) > 4294967295):
                     raise ValueError(f'Invalid Steam app ID at {coordinate}')
@@ -121,7 +126,6 @@ def plan(profile, name, pages, root, mode='auto', include_coordinates=None):
                 control = control.model_copy(update={
                     'action_name': 'com.hotspot.streamdock.system.website',
                     'settings': {'path': f'steam://rungameid/{control.steam_app_id}'},
-                    'icon_query': control.icon_query or (control.title[:100] if control.auto_icon is not False else ''),
                 })
             if control.flow_title and control.flow_steps is None:
                 raise ValueError(f'Provide flow_steps with flow_title at {coordinate}')
@@ -139,7 +143,7 @@ def plan(profile, name, pages, root, mode='auto', include_coordinates=None):
             else:
                 if old is None or control.controller or control.hotkey:
                     raise ValueError(f'Choose an installed action to create or replace {coordinate}')
-                if control.settings is None and not (control.image_path or control.icon_query or control.auto_icon or control.title):
+                if control.settings is None and not (control.image_path or control.icon_query or control.auto_icon or control.title or control.show_title is False):
                     raise ValueError(f'Provide settings or an icon for {coordinate}')
                 action = dict(old)
                 settings = dict(old.get('Settings') or {})
@@ -150,47 +154,62 @@ def plan(profile, name, pages, root, mode='auto', include_coordinates=None):
                 if control.settings is not None:
                     action['Settings'] = settings
                 operation = 'edit'
-            if control.title:
-                if len(control.title) > 120 or any(ord(char) < 32 for char in control.title):
-                    raise ValueError(f'Invalid title at {coordinate}')
-                states = list(action.get('States') or [{}])
-                if not 0 <= control.state_index < len(states):
-                    raise ValueError(f'No editable title at state {control.state_index} on {coordinate}')
-                states[control.state_index] = {**states[control.state_index], 'Title': control.title}
-                action['States'] = states
-            change = {'operation': operation, 'action': (
-                dict(action) if operation == 'edit' else _preview_action(action)
-            )}
+            if control.title and (len(control.title) > 120 or any(ord(char) < 32 for char in control.title)):
+                raise ValueError(f'Invalid title at {coordinate}')
             destination_changed = (operation == 'edit'
                                    and any(key in (control.settings or {})
                                            and (old.get('Settings') or {}).get(key) != control.settings[key]
                                            for key in ('path', 'appId')))
-            if (control.image_path or control.icon_query or control.auto_icon is True
-                    or control.auto_icon is not False and (operation != 'edit' or destination_changed)):
+            change = {'operation': operation}
+            steam_id = app_id_from_action(action)
+            data = None
+            update_icon = (control.image_path or control.icon_query or control.auto_icon is True
+                           or control.auto_icon is not False and (operation != 'edit' or destination_changed))
+            if update_icon or control.title or control.show_title is False:
                 states = list(action.get('States') or [{}])
                 index = control.state_index
                 if not 0 <= index < len(states) or not isinstance(states[index], dict):
-                    raise ValueError(f'No editable icon at state {index} on {coordinate}')
-                data, icon = for_action({**action, 'States': [states[index]]},
-                                        path.parent, control.icon_query, control.image_path)
-                change['icon'] = {**icon, 'state_index': index}
-                if data is not None:
-                    image_bytes += len(data)
-                    if image_bytes > live.MAX_ARCHIVE_BYTES:
-                        raise ValueError('New icons exceed the live import size limit')
-                    filename = uuid.uuid4().hex.upper() + '.png'
-                    states[index] = {**states[index], 'Image': filename}
+                    raise ValueError(f'No editable state at {index} on {coordinate}')
+                state = dict(states[index])
+                title = control.title or state.get('Title') or ''
+                if not isinstance(title, str):
+                    title = ''
+                if update_icon:
+                    query = control.icon_query or (title[:100] if steam_id else '')
+                    data, icon = for_action({**action, 'States': [state]}, path.parent,
+                                            query, control.image_path, refresh=control.auto_icon is True)
+                    change['icon'] = {**icon, 'state_index': index}
+                if control.show_title is False or (steam_id and data is not None and control.show_title is None):
+                    state.pop('Title', None)
+                elif control.title:
+                    state['Title'] = control.title
+                if title:
+                    change['title'] = title
+                states[index] = state
+                if state != (action.get('States') or [{}])[index]:
                     action['States'] = states
-                    images[member.parent / 'Images' / filename] = data
-            elif control.state_index and not control.title:
-                raise ValueError(f'Choose an icon when specifying a state at {coordinate}')
+            elif control.state_index:
+                raise ValueError(f'Choose an icon or title when specifying a state at {coordinate}')
+            change['action'] = dict(action) if operation == 'edit' else _preview_action(action)
+            if data is not None:
+                image_bytes += len(data)
+                if image_bytes > live.MAX_ARCHIVE_BYTES:
+                    raise ValueError('New icons exceed the live import size limit')
+                filename = uuid.uuid4().hex.upper() + '.png'
+                action['States'] = [*states[:index], {**states[index], 'Image': filename}, *states[index + 1:]]
+                images[member.parent / 'Images' / filename] = data
             actions[coordinate] = action
             changes[coordinate] = change
         edits[page] = {**doc, 'Actions': actions}
-        details[page] = {'replace': update.replace, 'changes': changes,
+        details[page] = {'replace': update.replace, 'updated': actions != before, 'changes': changes,
                          'cleared': sorted(before.keys() - actions.keys())}
     preview = {'source_profile': profile, 'name': name, 'source_hashes': source_hashes,
-               'pages': details, 'mode': mode, 'creates_scene': mode != 'edit'}
+               'pages': details, 'mode': mode, 'creates_scene': mode != 'edit',
+               'needs_artwork': [
+                   {'page': page, 'coordinate': coordinate, 'query': change['icon']['query']}
+                   for page, detail in details.items() for coordinate, change in detail['changes'].items()
+                   if change.get('icon', {}).get('needs_artwork')
+               ]}
     if seed is not None:
         preview['registry_sha256'] = seed['registry_sha256']
         preview['include_coordinates'] = seed['include_coordinates']

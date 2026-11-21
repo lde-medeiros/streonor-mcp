@@ -36,6 +36,47 @@ class IconTests(unittest.TestCase):
         self.assertEqual(first, second)
         self.assertEqual(info['origin'], 'generated_label')
 
+    def test_steam_artwork_uses_official_fallback_and_preserves_supplied_icon(self):
+        from streonor_mcp import steam
+
+        def asset(app_id, name):
+            self.assertEqual(app_id, '1234')
+            buffer = io.BytesIO()
+            size = (300, 120) if name == 'library_hero.jpg' else (200, 100)
+            Image.new('RGB', size, 'blue' if name == 'library_hero.jpg' else 'white').save(buffer, 'PNG')
+            return buffer.getvalue()
+
+        action = {'Settings': {'path': 'steam://rungameid/1234'}, 'States': [{'Image': 'old.png'}]}
+        with patch.object(steam, 'steam_roots', return_value=()), patch.object(steam, '_download_artwork', side_effect=asset) as fetch:
+            data, info = icons.for_action(action, self.root, refresh=True)
+            self.assertEqual(info['origin'], 'steam_web_artwork')
+            self.assertTrue(all(source.startswith('https://shared.fastly.steamstatic.com/') for source in info['source_paths']))
+            with Image.open(io.BytesIO(data)) as image:
+                self.assertEqual(image.size, profiles.ICON_SIZE)
+                self.assertEqual(image.getpixel((627, 627)), (255, 255, 255, 255))
+                self.assertEqual(image.getpixel((0, 0))[3], 255)
+            fetch.reset_mock()
+            preferred = self.root / 'preferred.png'
+            Image.new('RGB', (24, 24), 'green').save(preferred)
+            _, info = icons.for_action(action, self.root, image_path=str(preferred), refresh=True)
+            self.assertEqual(info['origin'], 'provided')
+            fetch.assert_not_called()
+
+    def test_resolves_an_installed_app_by_name_from_the_vendor_cache(self):
+        folder = self.root / 'profiles' / 'test.sdProfile'
+        folder.mkdir(parents=True)
+        cache = self.root / 'images' / 'appsImage'
+        cache.mkdir(parents=True)
+        icon = cache / 'opaque-name.png'
+        Image.new('RGB', (24, 24), 'green').save(icon)
+        settings = {'applications': [{'name': 'Example Control Panel', 'image': str(icon)}]}
+        (folder / 'manifest.json').write_text(json.dumps({'Actions': {'0,0': {'Settings': settings}}}))
+        with patch.object(profiles, 'ROOT', folder.parent), patch.object(profiles, 'vendor_dir', return_value=self.root):
+            data, info = icons.resolve('Example Control Panel')
+        self.assertEqual(info['origin'], 'installed_app')
+        with Image.open(io.BytesIO(data)) as image:
+            self.assertEqual(image.getpixel((627, 627)), (0, 128, 0, 255))
+
     def test_svg_external_resources_rejected(self):
         path = self.pack / 'unsafe.svg'
         path.write_text('<svg xmlns="http://www.w3.org/2000/svg"><image href="file:///private.png"/></svg>')

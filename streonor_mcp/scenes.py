@@ -106,7 +106,8 @@ def create(source_profile, name, expected_source_sha256, expected_registry_sha25
             for name, data in layout_images.items():
                 profiles.write_new_file(folder / 'Images' / name, data)
             from .live import _encode
-            profiles.write_new_file(folder / 'manifest.json', _encode(doc))
+            encoded = _encode(doc)
+            profiles.write_new_file(folder / 'manifest.json', encoded)
             connection.execute(f'INSERT INTO "{change["device"]}" (Profile) VALUES (?)', (profile,))
             connection.commit()
         except Exception:
@@ -115,7 +116,7 @@ def create(source_profile, name, expected_source_sha256, expected_registry_sha25
                 import shutil
                 shutil.rmtree(folder)
             raise
-    return {'created': True, 'profile': profile, 'name': change['name'], 'catalog_backup': str(backup), 'reopen_app': True}
+    return {'created': True, 'profile': profile, 'name': change['name'], 'catalog_backup': str(backup), 'new_sha256': profiles.fingerprint(encoded), 'reopen_app': True}
 
 
 def preview_change(profile, operation, new_name='', root=profiles.ROOT):

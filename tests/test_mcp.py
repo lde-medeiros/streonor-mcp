@@ -41,8 +41,10 @@ class MCPTests(unittest.IsolatedAsyncioTestCase):
             (plugin / 'manifest.json').write_text(json.dumps({'Name': 'Fixture', 'Actions': [{'Name': 'Website', 'UUID': 'website'}, {'Name': 'Steam website', 'UUID': 'com.hotspot.streamdock.system.website'}, {'Name': 'Hotkey fixture', 'UUID': 'com.hotspot.streamdock.system.hotkey', 'Controllers': ['Keypad', 'Knob']}]}))
             # Simulate the native importer and process lifecycle.
             stub = (
-                'from streonor_mcp import profiles, server, live; '
+                'from streonor_mcp import profiles, server, live, steam; '
                 'profiles.vendor_running = lambda: False; '
+                'steam.steam_roots = lambda: (profiles.ROOT.parent / "Steam",); '
+                'steam._download_artwork = lambda app_id, filename: None; '
                 'live.import_scene = lambda profile, root, name, edits, hashes, images: '
                 'dict(pages=edits, images=len(images)); server.main()'
             )
@@ -66,7 +68,9 @@ class MCPTests(unittest.IsolatedAsyncioTestCase):
                         return [json.loads(c.text) for c in result.content if c.type == 'text']
                     self.assertTrue(await call('list_supported_devices'))
                     self.assertTrue(await call('list_available_actions'))
-                    self.assertEqual((await call('list_profiles'))[0]['name'], 'Fixture')
+                    info = (await call('list_profiles'))[0]
+                    self.assertEqual(info['name'], 'Fixture')
+                    self.assertEqual(info['keypad_coordinates'], ['0,0', '1,0', '2,0', '0,1', '1,1', '2,1'])
                     self.assertTrue(await call('find_icons', query='test'))
                     resolved = (await call('resolve_icon', query='test'))[0]
                     self.assertEqual(resolved['origin'], 'installed')
@@ -222,35 +226,63 @@ class MCPTests(unittest.IsolatedAsyncioTestCase):
                     apps.mkdir(parents=True)
                     (apps / 'appmanifest_1234.acf').write_text(
                         '"AppState"\n{\n"appid" "1234"\n"name" "Fixture Game"\n"StateFlags" "4"\n}', encoding='utf-8')
+                    cache = root / 'Steam' / 'appcache' / 'librarycache' / '1234' / 'hashed'
+                    cache.mkdir(parents=True)
+                    Image.new('RGB', (600, 240), 'red').save(cache / 'library_hero.jpg')
+                    Image.new('RGBA', (240, 130), 'white').save(cache / 'logo.png')
                     games = await call('list_steam_games', library_path=str(apps.parent))
                     self.assertEqual(games[0]['app_id'], '1234')
                     steam_controls = {'0,0': {'steam_app_id': games[0]['app_id'], 'title': games[0]['name']}}
                     create_args = dict(profile='Fixture', name='Gaming fixture', mode='create',
-                                       include_coordinates=['3,0'], pages=[{'controls': steam_controls}])
+                                       include_coordinates=['3,0'], pages=[{'replace': True, 'controls': steam_controls}])
                     plan = (await call('preview_scene_layout', **create_args))[0]
+                    steam_preview = next(iter(plan['pages'].values()))['changes']['0,0']
+                    self.assertEqual(steam_preview['icon']['origin'], 'steam_local_artwork')
+                    self.assertNotIn('Title', steam_preview['action']['States'][0])
+                    self.assertNotIn('3,0', next(iter(plan['pages'].values()))['cleared'])
                     created = (await call('apply_scene_layout', **create_args,
                                           expected_layout_sha256=plan['layout_sha256']))[0]
+                    self.assertTrue(created['verified'])
                     new_profile = created['profile']
                     gaming = (await call('read_profile', profile=new_profile))[0]['profile']
                     self.assertEqual(set(gaming['Actions']), {'0,0', '3,0'})
                     self.assertEqual(gaming['Actions']['0,0']['Settings']['path'], 'steam://rungameid/1234')
-                    self.assertEqual(gaming['Actions']['0,0']['States'][0]['Title'], 'Fixture Game')
-                    self.assertTrue((root / 'profiles' / new_profile / 'Images' /
-                                     gaming['Actions']['0,0']['States'][0]['Image']).is_file())
+                    state = gaming['Actions']['0,0']['States'][0]
+                    self.assertNotIn('Title', state)
+                    with Image.open(root / 'profiles' / new_profile / 'Images' / state['Image']) as image:
+                        self.assertEqual(image.size, (1254, 1254))
+                        self.assertLess(image.getpixel((0, 0))[0], 200)
+                        self.assertEqual(image.getpixel((627, 627)), (255, 255, 255, 255))
 
                     # A matching name means edit the same scene, never create another.
                     edit_args = dict(profile=new_profile, name='Gaming fixture', pages=[{
-                        'controls': {'1,0': {'steam_app_id': '5678', 'title': 'Another Game'}}}])
+                        'controls': {'1,0': {'steam_app_id': '5678', 'title': 'Another Game', 'show_title': True}}}])
                     plan = (await call('preview_scene_layout', **edit_args))[0]
                     self.assertEqual(plan['mode'], 'edit')
                     await call('apply_scene_layout', **edit_args, expected_layout_sha256=plan['layout_sha256'])
                     patched = (await call('read_profile', profile=new_profile))[0]['profile']
                     self.assertEqual(set(patched['Actions']), {'0,0', '1,0', '3,0'})
-                    clear = dict(profile='Gaming fixture', pages=[{'replace': True, 'controls': {}}])
+                    self.assertEqual(patched['Actions']['1,0']['States'][0]['Title'], 'Another Game')
+                    refresh = dict(profile=new_profile, pages=[{'controls': {'0,0': {'auto_icon': True}}}])
+                    plan = (await call('preview_scene_layout', **refresh))[0]
+                    self.assertEqual(plan['pages'][new_profile]['changes']['0,0']['icon']['origin'], 'steam_local_artwork')
+                    clear = dict(profile='Gaming fixture', clear_all=True)
                     plan = (await call('preview_scene_layout', **clear))[0]
                     applied = (await call('apply_scene_layout', **clear, expected_layout_sha256=plan['layout_sha256']))[0]
+                    self.assertTrue(applied['verified'])
                     self.assertTrue(Path(applied['pages'][new_profile]['backup']).is_file())
                     cleared = (await call('read_profile', profile=new_profile))[0]['profile']
                     self.assertEqual(cleared['Actions'], {})
                     self.assertEqual(cleared['Name'], 'Gaming fixture')
+                    plan = (await call('preview_scene_layout', **clear))[0]
+                    unchanged = (await call('apply_scene_layout', **clear, expected_layout_sha256=plan['layout_sha256']))[0]
+                    self.assertFalse(unchanged['updated'])
+                    self.assertFalse(unchanged['app_restarted'])
+                    all_pages = dict(profile='Fixture', clear_all=True)
+                    plan = (await call('preview_scene_layout', **all_pages))[0]
+                    self.assertEqual(set(plan['pages']), {profile, page})
+                    await call('apply_scene_layout', **all_pages, expected_layout_sha256=plan['layout_sha256'])
+                    for page_id in (profile, page):
+                        saved = (await call('read_profile', profile='Fixture', page=page_id))[0]['profile']
+                        self.assertEqual(saved['Actions'], {})
                     self.assertEqual(set(tools), called, 'Every exposed MCP tool must be exercised')
