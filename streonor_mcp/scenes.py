@@ -53,7 +53,7 @@ def preview(source_profile, name, root=profiles.ROOT, include_coordinates=None):
     return {'source_profile': source_profile, 'name': name, 'device': device, 'source_sha256': digest, 'registry_sha256': registry, 'blank': not selected, 'include_coordinates': selected}
 
 
-def create(source_profile, name, expected_source_sha256, expected_registry_sha256, root=profiles.ROOT, backups=profiles.BACKUPS, include_coordinates=None):
+def create(source_profile, name, expected_source_sha256, expected_registry_sha256, root=profiles.ROOT, backups=profiles.BACKUPS, include_coordinates=None, *, layout_actions=None, layout_images=None):
     if profiles.vendor_running():
         raise RuntimeError('Close STREONOR before creating a scene')
     change = preview(source_profile, name, root, include_coordinates)
@@ -64,7 +64,11 @@ def create(source_profile, name, expected_source_sha256, expected_registry_sha25
         raise ValueError('Source changed; preview again')
     profile = str(uuid.uuid4()).upper() + '.sdProfile'
     doc = {k: v for k, v in source.items() if k not in ('Actions', 'Pages', 'Name') and not k.startswith('AppIdentifier')}
-    selected_actions = copy.deepcopy({c: source['Actions'][c] for c in change['include_coordinates']})
+    selected_actions = copy.deepcopy(
+        {c: source['Actions'][c] for c in change['include_coordinates']}
+        if layout_actions is None else layout_actions
+    )
+    layout_images = {member.name: data for member, data in (layout_images or {}).items()}
     doc.update(Name=change['name'], Actions=selected_actions, Pages={'Current': profile, 'Pages': [profile]}, AppIdentifier='', AppIdentifier0='', AppIdentifier1='', AppIdentifier2='')
     path = catalog(root, change['device'])
     backups.mkdir(parents=True, exist_ok=True)
@@ -85,7 +89,7 @@ def create(source_profile, name, expected_source_sha256, expected_registry_sha25
                 action['ActionID'] = str(uuid.uuid4())
                 for state in action.get('States', []):
                     image = state.get('Image', '')
-                    if image.lower().endswith('.png'):
+                    if image.lower().endswith('.png') and image not in layout_images:
                         candidate = source_folder / ('Images/' + image if '/' not in image and '\\' not in image else image)
                         candidate = candidate.resolve(strict=True)
                         if not candidate.is_relative_to(source_folder.resolve()):
@@ -99,7 +103,10 @@ def create(source_profile, name, expected_source_sha256, expected_registry_sha25
                     copy_action(child)
             for action in selected_actions.values():
                 copy_action(action)
-            profiles.write_new_file(folder / 'manifest.json', (json.dumps(doc, indent=4, ensure_ascii=False) + '\n').encode())
+            for name, data in layout_images.items():
+                profiles.write_new_file(folder / 'Images' / name, data)
+            from .live import _encode
+            profiles.write_new_file(folder / 'manifest.json', _encode(doc))
             connection.execute(f'INSERT INTO "{change["device"]}" (Profile) VALUES (?)', (profile,))
             connection.commit()
         except Exception:

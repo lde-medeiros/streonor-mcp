@@ -1,6 +1,8 @@
-"""Plan several page changes together before asking STREONOR to import them."""
+"""Plan and apply batches of controls for existing and new scenes."""
 import json
+import os
 import re
+import time
 import uuid
 
 from pydantic import BaseModel, ConfigDict
@@ -18,6 +20,8 @@ class ControlEdit(BaseModel):
     settings: dict | None = None
     controller: str = ''
     hotkey: str = ''
+    steam_app_id: str = ''
+    title: str = ''
     flow_steps: list[dict] | None = None
     flow_title: str = ''
     state_index: int = 0
@@ -32,6 +36,7 @@ class PageEdit(BaseModel):
     page: str = ''
     replace: bool = False
     controls: dict[str, ControlEdit | None]
+    keep_coordinates: tuple[str, ...] = ()
 
 
 def _preview_action(action):
@@ -41,28 +46,61 @@ def _preview_action(action):
     return result
 
 
-def plan(profile, name, pages, root):
+def plan(profile, name, pages, root, mode='auto', include_coordinates=None):
+    if not profiles.PROFILE_ID.fullmatch(profile):
+        matches = [p['id'] for p in profiles.list_profiles(root)
+                   if (p['name'] or '').casefold() == profile.strip().casefold()]
+        if len(matches) != 1:
+            raise ValueError('Choose an unambiguous scene name or ID from list_profiles')
+        profile = matches[0]
     if not 1 <= len(pages) <= 16 or sum(len(p.controls) for p in pages) > 128:
         raise ValueError('Provide 1 to 16 pages and at most 128 control edits')
     root_doc, root_hash, order = live.scene_pages(profile, root)
-    name = scenes.validate_new_name(name, root)
+    current_name = root_doc.get('Name', '')
+    if mode == 'auto':
+        mode = 'edit' if not name or name.strip().casefold() == current_name.casefold() else 'copy'
+    if mode not in ('edit', 'copy', 'create'):
+        raise ValueError('Layout mode must be auto, edit, copy or create')
+    if mode == 'edit':
+        if name and name.strip().casefold() != current_name.casefold():
+            raise ValueError('Use apply_scene_change to rename an existing scene')
+        name = current_name
+    elif mode == 'copy':
+        name = scenes.validate_new_name(name, root)
+    if include_coordinates is not None and mode != 'create':
+        raise ValueError('include_coordinates is only for a new scene in create mode')
+    seed = None
+    if mode == 'create':
+        if len(pages) != 1 or pages[0].page not in ('', profile):
+            raise ValueError('Create mode starts with one main page; use copy to import multiple pages')
+        seed = scenes.preview(profile, name, root, include_coordinates)
+        if seed['source_sha256'] != root_hash:
+            raise ValueError('Source scene changed while planning; preview again')
+        name = seed['name']
+
     edits, images, details = {}, {}, {}
     image_bytes = 0
+    installed = None
     source_hashes = {profile: root_hash}
     for update in pages:
         page = update.page or profile
         if page not in order or page in edits:
             raise ValueError('Each page must be registered to the scene and appear once')
-        if not update.controls and not update.replace:
+        if not update.controls and not update.replace and mode != 'create':
             raise ValueError('Provide controls to edit or explicitly replace the page')
         member = live.page_member(profile, page)
         path = profiles.profile_path(profile, page, root)
         if path != root.resolve() / profile / member:
-            raise ValueError('Live imports require a page stored directly in its scene')
+            raise ValueError('Layouts require a page stored directly in its scene')
         doc, digest = (root_doc, root_hash) if page == profile else profiles.read_manifest(profile, page, root)
         source_hashes[page] = digest
         before = doc['Actions']
-        actions = {} if update.replace else dict(before)
+        if seed is not None:
+            before = {coordinate: before[coordinate] for coordinate in seed['include_coordinates']}
+        keep = set(update.keep_coordinates)
+        if keep and (not update.replace or not keep <= before.keys() or keep & update.controls.keys()):
+            raise ValueError('keep_coordinates must select existing, unedited controls on a replaced page')
+        actions = {key: before[key] for key in keep} if update.replace else dict(before)
         changes = {}
         for coordinate, control in update.controls.items():
             if not re.fullmatch(r'(0|[1-9][0-9]{0,2}),(0|[1-9][0-9]{0,2})', coordinate):
@@ -74,6 +112,17 @@ def plan(profile, name, pages, root):
                 del actions[coordinate]
                 changes[coordinate] = {'operation': 'remove'}
                 continue
+            if control.steam_app_id:
+                if (not re.fullmatch(r'[1-9][0-9]{0,9}', control.steam_app_id)
+                        or int(control.steam_app_id) > 4294967295):
+                    raise ValueError(f'Invalid Steam app ID at {coordinate}')
+                if control.action_name or control.settings is not None or control.hotkey or control.flow_steps is not None or control.flow_title:
+                    raise ValueError(f'Use steam_app_id and title to define a Steam launch at {coordinate}')
+                control = control.model_copy(update={
+                    'action_name': 'com.hotspot.streamdock.system.website',
+                    'settings': {'path': f'steam://rungameid/{control.steam_app_id}'},
+                    'icon_query': control.icon_query or (control.title[:100] if control.auto_icon is not False else ''),
+                })
             if control.flow_title and control.flow_steps is None:
                 raise ValueError(f'Provide flow_steps with flow_title at {coordinate}')
             if control.flow_steps is not None:
@@ -82,13 +131,15 @@ def plan(profile, name, pages, root):
                 action = build_flow(before, coordinate, control.flow_steps, control.flow_title)
                 operation = 'replace' if coordinate in before else 'create'
             elif control.action_name:
+                if installed is None:
+                    installed = profiles.list_installed_actions()
                 controller = control.controller or (old or {}).get('Controller') or 'Keypad'
-                action, _ = build_action(control.action_name, control.settings, controller, hotkey=control.hotkey)
+                action, _ = build_action(control.action_name, control.settings, controller, hotkey=control.hotkey, installed=installed)
                 operation = 'replace' if coordinate in before else 'create'
             else:
                 if old is None or control.controller or control.hotkey:
                     raise ValueError(f'Choose an installed action to create or replace {coordinate}')
-                if control.settings is None and not (control.image_path or control.icon_query or control.auto_icon):
+                if control.settings is None and not (control.image_path or control.icon_query or control.auto_icon or control.title):
                     raise ValueError(f'Provide settings or an icon for {coordinate}')
                 action = dict(old)
                 settings = dict(old.get('Settings') or {})
@@ -99,12 +150,20 @@ def plan(profile, name, pages, root):
                 if control.settings is not None:
                     action['Settings'] = settings
                 operation = 'edit'
+            if control.title:
+                if len(control.title) > 120 or any(ord(char) < 32 for char in control.title):
+                    raise ValueError(f'Invalid title at {coordinate}')
+                states = list(action.get('States') or [{}])
+                if not 0 <= control.state_index < len(states):
+                    raise ValueError(f'No editable title at state {control.state_index} on {coordinate}')
+                states[control.state_index] = {**states[control.state_index], 'Title': control.title}
+                action['States'] = states
             change = {'operation': operation, 'action': (
                 dict(action) if operation == 'edit' else _preview_action(action)
             )}
             destination_changed = (operation == 'edit'
                                    and any(key in (control.settings or {})
-                                           and old.get('Settings', {}).get(key) != control.settings[key]
+                                           and (old.get('Settings') or {}).get(key) != control.settings[key]
                                            for key in ('path', 'appId')))
             if (control.image_path or control.icon_query or control.auto_icon is True
                     or control.auto_icon is not False and (operation != 'edit' or destination_changed)):
@@ -123,7 +182,7 @@ def plan(profile, name, pages, root):
                     states[index] = {**states[index], 'Image': filename}
                     action['States'] = states
                     images[member.parent / 'Images' / filename] = data
-            elif control.state_index:
+            elif control.state_index and not control.title:
                 raise ValueError(f'Choose an icon when specifying a state at {coordinate}')
             actions[coordinate] = action
             changes[coordinate] = change
@@ -131,6 +190,65 @@ def plan(profile, name, pages, root):
         details[page] = {'replace': update.replace, 'changes': changes,
                          'cleared': sorted(before.keys() - actions.keys())}
     preview = {'source_profile': profile, 'name': name, 'source_hashes': source_hashes,
-               'pages': details}
+               'pages': details, 'mode': mode, 'creates_scene': mode != 'edit'}
+    if seed is not None:
+        preview['registry_sha256'] = seed['registry_sha256']
+        preview['include_coordinates'] = seed['include_coordinates']
     digest = profiles.fingerprint(json.dumps(preview, sort_keys=True, allow_nan=False).encode())
     return {**preview, 'layout_sha256': digest}, edits, images
+
+
+def apply_in_place(profile, edits, hashes, images, root, backups):
+    """Write all prepared pages with rollback on failure and a backup per changed page."""
+    if profiles.vendor_running():
+        raise RuntimeError('Close STREONOR or use manage_app=True to edit this scene')
+    folder = root.resolve() / profile
+    staged, created_icons, replaced = {}, [], []
+    results = {}
+    committed = False
+    try:
+        for page, doc in edits.items():
+            path = profiles.profile_path(profile, page, root)
+            original = profiles.read_bounded(path, profiles.MAX_MANIFEST_BYTES)
+            if profiles.fingerprint(original) != hashes[page]:
+                raise ValueError('Scene changed; preview the layout again')
+            if doc == profiles.parse_manifest(original):
+                results[page] = {'id': page, 'sha256': hashes[page], 'updated': False}
+                continue
+            data = live._encode(doc)
+            temp = path.with_name('.streonor-layout-' + uuid.uuid4().hex)
+            backup = backups / f'{profile}--{page}--{time.time_ns()}.json'
+            profiles.write_new_file(backup, original)
+            profiles.write_new_file(temp, data)
+            staged[path] = (temp, backup)
+            results[page] = {'id': page, 'sha256': profiles.fingerprint(data),
+                             'updated': True, 'backup': str(backup)}
+        for member, data in images.items():
+            output = folder / member
+            if not output.parent.resolve().is_relative_to(folder):
+                raise ValueError('Image directory escapes the scene')
+            profiles.write_new_file(output, data)
+            created_icons.append(output)
+        if profiles.vendor_running() or any(profiles.read_manifest(profile, page, root)[1] != digest
+                                            for page, digest in hashes.items()):
+            raise ValueError('STREONOR started or the scene changed; preview again')
+        for path, (temp, backup) in staged.items():
+            os.replace(temp, path)
+            replaced.append((path, backup))
+        committed = True
+    finally:
+        for temp, _ in staged.values():
+            temp.unlink(missing_ok=True)
+        if not committed:
+            for path, backup in reversed(replaced):
+                restore = path.with_name('.streonor-rollback-' + uuid.uuid4().hex)
+                try:
+                    profiles.write_new_file(restore, profiles.read_bounded(backup, profiles.MAX_MANIFEST_BYTES))
+                    os.replace(restore, path)
+                except OSError as error:
+                    raise RuntimeError(f'Layout rollback failed. Restore the affected page from {backup}') from error
+                finally:
+                    restore.unlink(missing_ok=True)
+            for output in created_icons:
+                output.unlink(missing_ok=True)
+    return {'updated': bool(replaced), 'profile': profile, 'pages': results}

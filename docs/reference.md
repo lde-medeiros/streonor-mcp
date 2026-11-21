@@ -132,13 +132,25 @@ MCP clients can show plain-language titles alongside the tool identifiers used b
 | `preview_control_restore`, `restore_controls` | Restore controls from a scoped MCP backup |
 | `preview_setting_change`, `apply_setting_change` | Guarded changes to existing settings |
 | `preview_action_change`, `apply_action_change` | Create, clone, configure, or remove actions, build flows, and manage icons |
-| `preview_scene_layout`, `apply_scene_layout` | Preview and import edits across existing pages as a named scene copy |
+| `preview_scene_layout`, `apply_scene_layout` | Edit existing pages in one batch, create a complete scene, or import a named copy |
+| `list_steam_games` | Discover locally installed Steam titles and launch IDs |
 
 Read the intended scene and page, preview the edit, then pass the returned hash to the matching apply tool. A stale hash requires a new preview. In-place writes create backups and require the app to close. On Windows, `manage_app=true` handles closing and reopening. If the app stays in the tray, `force_close=true` permits termination and may discard unsaved settings. Set `STREONOR_FAST_RESTART=1` in the MCP server environment to make managed Windows edits skip the normal-close attempt.
 
 Actions can be cloned from an existing same-page action or created with create_by_name from installed Toolbox metadata. configure_action replaces a slot's complete settings object. Creation alone does not verify plugin-specific runtime behavior. Knob settings are editable where present in the vendor profile. Scenes can be created, renamed and deleted using the scene tools. Page creation and deletion, live event streaming, and direct Toolbox invocation are pending. Unknown settings require the same JSON type as their existing value.
 
 Imported PNG/JPEG/BMP/GIF/WebP icons become exactly **1254 x 1254 pixels, 1:1, PNG**, with transparent padding, preserved proportions and no cropping. The first frame of animated inputs is used. Small source images are enlarged without adding detail. Original imported files are preserved. `prepare_icon` refuses to overwrite its output. Self-contained SVG icons are rendered to PNG. External resources, scripts and SVG text are rejected.
+
+## Edit, clear, or create a scene in one batch
+
+Use the same arguments for `preview_scene_layout` and `apply_scene_layout`, then pass the preview's `layout_sha256` as `expected_layout_sha256`. Pass an unambiguous scene name or its ID.
+
+- **Edit Gaming.** Set `profile="Gaming"` and omit `name`. Unlisted keys, knobs, and other controls are preserved.
+- **Clear Gaming.** Pass `pages=[{"replace": true, "controls": {}}]` for the main page. Add an entry per other page to clear the whole scene. Use `keep_coordinates` to preserve selected controls when clearing.
+- **Create Gaming in one operation.** Set `profile="Daily"`, `name="Gaming"`, and `mode="create"`. Use `include_coordinates` to copy the existing volume and Scene Shift controls and `pages` to add new keys before the scene is registered.
+- **Add Steam keys.** Call `list_steam_games` to discover installed titles. Use `{"steam_app_id": "1234", "title": "Game name"}` for a key, with the returned ID and name. Local discovery includes Steam apps and demos and does not need a Steam account or API key.
+
+On Windows, managed edits close and reopen STREONOR once per batch. Existing scene IDs and page backups are retained. To keep STREONOR running, use `mode="copy"` with a new name.
 
 ## Edit while STREONOR stays open
 

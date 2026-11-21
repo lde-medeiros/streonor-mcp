@@ -38,7 +38,7 @@ class MCPTests(unittest.IsolatedAsyncioTestCase):
             Image.new('RGB', (8, 8), 'blue').save(icons / 'test.png')
             plugin = root / 'plugins' / 'fixture.sdPlugin'
             plugin.mkdir(parents=True)
-            (plugin / 'manifest.json').write_text(json.dumps({'Name': 'Fixture', 'Actions': [{'Name': 'Website', 'UUID': 'website'}, {'Name': 'Hotkey fixture', 'UUID': 'com.hotspot.streamdock.system.hotkey', 'Controllers': ['Keypad', 'Knob']}]}))
+            (plugin / 'manifest.json').write_text(json.dumps({'Name': 'Fixture', 'Actions': [{'Name': 'Website', 'UUID': 'website'}, {'Name': 'Steam website', 'UUID': 'com.hotspot.streamdock.system.website'}, {'Name': 'Hotkey fixture', 'UUID': 'com.hotspot.streamdock.system.hotkey', 'Controllers': ['Keypad', 'Knob']}]}))
             # Simulate the native importer and process lifecycle.
             stub = (
                 'from streonor_mcp import profiles, server, live; '
@@ -218,4 +218,39 @@ class MCPTests(unittest.IsolatedAsyncioTestCase):
                     self.assertEqual(set(batch['pages'][page]['Actions']), {'2,0'})
                     self.assertEqual(batch['images'], 2)
                     self.assertEqual((await call('read_profile', profile=profile))[0]['profile'], reordered)
+                    apps = root / 'SteamLibrary' / 'steamapps'
+                    apps.mkdir(parents=True)
+                    (apps / 'appmanifest_1234.acf').write_text(
+                        '"AppState"\n{\n"appid" "1234"\n"name" "Fixture Game"\n"StateFlags" "4"\n}', encoding='utf-8')
+                    games = await call('list_steam_games', library_path=str(apps.parent))
+                    self.assertEqual(games[0]['app_id'], '1234')
+                    steam_controls = {'0,0': {'steam_app_id': games[0]['app_id'], 'title': games[0]['name']}}
+                    create_args = dict(profile='Fixture', name='Gaming fixture', mode='create',
+                                       include_coordinates=['3,0'], pages=[{'controls': steam_controls}])
+                    plan = (await call('preview_scene_layout', **create_args))[0]
+                    created = (await call('apply_scene_layout', **create_args,
+                                          expected_layout_sha256=plan['layout_sha256']))[0]
+                    new_profile = created['profile']
+                    gaming = (await call('read_profile', profile=new_profile))[0]['profile']
+                    self.assertEqual(set(gaming['Actions']), {'0,0', '3,0'})
+                    self.assertEqual(gaming['Actions']['0,0']['Settings']['path'], 'steam://rungameid/1234')
+                    self.assertEqual(gaming['Actions']['0,0']['States'][0]['Title'], 'Fixture Game')
+                    self.assertTrue((root / 'profiles' / new_profile / 'Images' /
+                                     gaming['Actions']['0,0']['States'][0]['Image']).is_file())
+
+                    # A matching name means edit the same scene, never create another.
+                    edit_args = dict(profile=new_profile, name='Gaming fixture', pages=[{
+                        'controls': {'1,0': {'steam_app_id': '5678', 'title': 'Another Game'}}}])
+                    plan = (await call('preview_scene_layout', **edit_args))[0]
+                    self.assertEqual(plan['mode'], 'edit')
+                    await call('apply_scene_layout', **edit_args, expected_layout_sha256=plan['layout_sha256'])
+                    patched = (await call('read_profile', profile=new_profile))[0]['profile']
+                    self.assertEqual(set(patched['Actions']), {'0,0', '1,0', '3,0'})
+                    clear = dict(profile='Gaming fixture', pages=[{'replace': True, 'controls': {}}])
+                    plan = (await call('preview_scene_layout', **clear))[0]
+                    applied = (await call('apply_scene_layout', **clear, expected_layout_sha256=plan['layout_sha256']))[0]
+                    self.assertTrue(Path(applied['pages'][new_profile]['backup']).is_file())
+                    cleared = (await call('read_profile', profile=new_profile))[0]['profile']
+                    self.assertEqual(cleared['Actions'], {})
+                    self.assertEqual(cleared['Name'], 'Gaming fixture')
                     self.assertEqual(set(tools), called, 'Every exposed MCP tool must be exercised')

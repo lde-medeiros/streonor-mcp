@@ -65,11 +65,11 @@ def edit_with_restart(edit, manage_app=False, force_close=False):
             if not profiles.vendor_running():
                 _request_relaunch(exe)
                 if result is not None:
-                    result['app_relaunch_requested'] = True
+                    result.update(app_relaunch_requested=True, app_restarted=True)
         except (OSError, subprocess.SubprocessError) as error:
             logging.getLogger(__name__).error('Could not relaunch STREONOR: %s', error)
             if result is not None:
-                result['app_relaunch_requested'] = False
+                result.update(app_relaunch_requested=False, app_restarted=False)
                 result['relaunch_error'] = str(error)
             elif failure is not None:
                 failure.add_note(f'Could not relaunch STREONOR: {error}')
