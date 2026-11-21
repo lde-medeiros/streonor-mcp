@@ -1,17 +1,23 @@
 name: Publish to PyPI and MCP Registry
 
 on:
-  workflow_dispatch:
+  release:
+    types: [published]
 
 permissions: {}
 
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   pypi:
-    if: github.repository == 'lde-medeiros/streonor-mcp' && startsWith(github.ref, 'refs/tags/v')
+    if: github.repository == 'lde-medeiros/streonor-mcp' && startsWith(github.ref, 'refs/tags/v') && !github.event.release.prerelease && !github.event.release.draft
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
       contents: read
+      actions: read
       id-token: write
     steps:
       - name: Download and verify GitHub release assets
@@ -22,6 +28,9 @@ jobs:
           tag="${GITHUB_REF_NAME}"
           version="${tag#v}"
           [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          passed=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow ci.yml \
+            --branch main --event push --commit "$GITHUB_SHA" --status success --limit 1 --json conclusion)
+          jq -e 'length == 1' <<<"$passed" >/dev/null
           mkdir dist
           for asset in "streonor_mcp-$version-py3-none-any.whl" "streonor_mcp-$version.tar.gz"; do
             gh release download "$tag" --repo "$GITHUB_REPOSITORY" --pattern "$asset" --dir dist
