@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.8.4
 
 - Use real Steam artwork by default. Compose square game icons with official logos and hide duplicate titles.
 - Prefer supplied and installed icons. Flag placeholder icons so MCP clients can supply official or generated artwork.
