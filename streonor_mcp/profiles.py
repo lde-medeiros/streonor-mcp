@@ -10,7 +10,7 @@ import tempfile
 import time
 import sys
 import warnings
-from PIL import Image, ImageOps
+from PIL import Image, ImageOps, ImageDraw
 from .devices import DEVICES, get_device
 from .paths import profiles_dir, data_dir, icons_dir, vendor_dir
 from .locking import serialized_profile_edit
@@ -168,24 +168,31 @@ def read_icon(image_path):
     return data
 
 
-def normalize_icon(data):
+def normalize_icon(data, background_color='', replace_edge_background=False):
     """Preserve the whole first frame and alpha while enforcing the icon canvas."""
     with Image.open(io.BytesIO(data)) as source:
         image = ImageOps.exif_transpose(source).convert('RGBA')
+        if background_color and not re.fullmatch(r'#[0-9a-fA-F]{6}', background_color):
+            raise ValueError('Background color must use #RRGGBB')
+        if replace_edge_background and not background_color:
+            raise ValueError('Edge replacement requires a background color')
+        if replace_edge_background:
+            color = tuple(bytes.fromhex(background_color[1:])) + (255,)
+            ImageDraw.floodfill(image, (0, 0), color, thresh=24)
         image = ImageOps.contain(image, (1254, 1254), Image.Resampling.LANCZOS)
-        canvas = Image.new('RGBA', (1254, 1254), (0, 0, 0, 0))
+        canvas = Image.new('RGBA', (1254, 1254), background_color or (0, 0, 0, 0))
         canvas.alpha_composite(image, ((1254-image.width)//2, (1254-image.height)//2))
         output = io.BytesIO()
         canvas.save(output, format='PNG')
         return output.getvalue()
 
 
-def prepare_icon(image_path, output_path):
+def prepare_icon(image_path, output_path, background_color='', replace_edge_background=False):
     """Create a square PNG without changing profiles or device storage."""
     output = Path(output_path).expanduser().resolve()
     if output.suffix.lower() != '.png':
         raise ValueError('Icon output must use the .png extension')
-    data = normalize_icon(read_icon(image_path))
+    data = normalize_icon(read_icon(image_path), background_color, replace_edge_background)
     write_new_file(output, data)
     return {'path': str(output), 'width': 1254, 'height': 1254, 'format': 'PNG', 'sha256': fingerprint(data)}
 
