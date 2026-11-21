@@ -1,5 +1,7 @@
 """Exercise the real stdio protocol without reading or editing personal profiles."""
 import json
+import sqlite3
+from contextlib import closing
 from pathlib import Path
 import sys
 import tempfile
@@ -21,6 +23,11 @@ class MCPTests(unittest.IsolatedAsyncioTestCase):
             folder.mkdir(parents=True)
             manifest = {'Name': 'Fixture', 'DeviceUUID': 'StreonorS6', 'Actions': {'0,0': {'Name': 'Website', 'UUID': 'website', 'Settings': {'path': 'https://old.test'}, 'States': [{'Image': ''}]}, '3,0': {'Name': 'Dial', 'Settings': {'step': 1}}}}
             (folder / 'manifest.json').write_text(json.dumps(manifest), encoding='utf-8')
+            (root / 'config').mkdir()
+            with closing(sqlite3.connect(root / 'config' / 'DataCache.db')) as db:
+                db.execute('CREATE TABLE StreonorS6 (Profile TEXT)')
+                db.execute('INSERT INTO StreonorS6 VALUES (?)', (profile,))
+                db.commit()
             icons = root / 'icons'
             icons.mkdir()
             Image.new('RGB', (8, 8), 'blue').save(icons / 'test.png')
@@ -36,9 +43,9 @@ class MCPTests(unittest.IsolatedAsyncioTestCase):
                     self.assertTrue(tools['read_profile'].annotations.readOnlyHint)
                     self.assertTrue(tools['apply_action_change'].annotations.destructiveHint)
                     called = set()
-                    async def call(name, **args):
-                        called.add(name)
-                        result = await session.call_tool(name, args)
+                    async def call(tool_name, **args):
+                        called.add(tool_name)
+                        result = await session.call_tool(tool_name, args)
                         self.assertFalse(result.isError, result.content)
                         return [json.loads(c.text) for c in result.content if c.type == 'text']
                     self.assertTrue(await call('list_supported_devices'))
@@ -64,4 +71,18 @@ class MCPTests(unittest.IsolatedAsyncioTestCase):
                     final = (await call('read_profile', profile=profile))[0]['profile']
                     self.assertEqual(final['Actions']['0,0']['Settings']['path'], 'https://new.test')
                     self.assertEqual(final['Actions']['3,0'], manifest['Actions']['3,0'])
+                    args = dict(profile=profile, operation='set_flow', coordinate='1,0', flow_steps=[{'source_coordinate': '0,0'}, {'source_coordinate': '0,0', 'settings': {'path': 'https://second.test'}, 'delay_ms': 500}], flow_title='Two steps')
+                    change = (await call('preview_action_change', **args))[0]
+                    await call('apply_action_change', **args, expected_sha256=change['sha256'])
+                    final = (await call('read_profile', profile=profile))[0]['profile']
+                    self.assertEqual(final['Actions']['1,0']['Actions'][1]['Settings']['path'], 'https://second.test')
+                    scene = (await call('preview_scene_creation', source_profile=profile, name='Temp'))[0]
+                    created = (await call('create_scene', source_profile=profile, name='Temp', expected_source_sha256=scene['source_sha256'], expected_registry_sha256=scene['registry_sha256']))[0]
+                    blank = (await call('read_profile', profile=created['profile']))[0]['profile']
+                    self.assertEqual(blank['Actions'], {})
+                    self.assertEqual(blank['Name'], 'Temp')
+                    with closing(sqlite3.connect(root / 'config' / 'DataCache.db')) as db:
+                        self.assertEqual(db.execute('SELECT COUNT(*) FROM StreonorS6 WHERE Profile=?', (created['profile'],)).fetchone()[0], 1)
+                    duplicate = await session.call_tool('preview_scene_creation', {'source_profile': profile, 'name': 'Temp'})
+                    self.assertTrue(duplicate.isError)
                     self.assertEqual(set(tools), called, 'Every exposed MCP tool must be exercised')

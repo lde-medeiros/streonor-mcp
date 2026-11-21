@@ -14,6 +14,7 @@ from PIL import Image, ImageOps
 from .devices import DEVICES, get_device
 from .paths import profiles_dir, data_dir, icons_dir, vendor_dir
 from .locking import serialized_profile_edit
+from .flows import build_flow
 
 ROOT = profiles_dir()
 BACKUPS = data_dir() / 'backups'
@@ -208,13 +209,16 @@ def prepare_boot_logo(device_id, image_path, output_path):
     return {'path': str(output), 'device': spec.id, 'width': spec.boot_logo_size[0], 'height': spec.boot_logo_size[1], 'format': 'PNG', 'device_written': False}
 
 
-def prepare_action(profile, page, operation, coordinate, source_coordinate='', image_path='', root=ROOT):
+def prepare_action(profile, page, operation, coordinate, source_coordinate='', image_path='', root=ROOT, flow_steps=None, flow_title=''):
     doc, digest = read_manifest(profile, page, root)
     actions = doc['Actions']
     if not re.fullmatch(r'\d+,\d+', coordinate):
         raise ValueError('Coordinate must use the app format, for example 0,0')
     before = actions.get(coordinate)
-    if operation in ('clone', 'create_from_template'):
+    if operation == 'set_flow':
+        flow = build_flow(actions, coordinate, flow_steps, flow_title)
+        detail = {'replaces': before.get('Name') if before else None, 'title': flow_title, 'steps': [{'source': step['source_coordinate'], 'action': child['Name'], 'delay_ms': child['Settings']['delay']} for step, child in zip(flow_steps, flow['Actions'])]}
+    elif operation in ('clone', 'create_from_template'):
         if before is not None:
             raise ValueError('Destination already has an action; remove it explicitly first')
         source = actions.get(source_coordinate)
@@ -242,17 +246,17 @@ def prepare_action(profile, page, operation, coordinate, source_coordinate='', i
             image = read_icon(image_path)
             detail.update(image_path=image_path, image_sha256=fingerprint(image), width=1254, height=1254, format='PNG')
     else:
-        raise ValueError('Operation must be clone, create_from_template, remove, set_icon, use_existing_icon, or clear_icon')
+        raise ValueError('Operation must be clone, create_from_template, remove, set_icon, use_existing_icon, clear_icon, or set_flow')
     return {'profile': profile, 'page': page, 'coordinate': coordinate, 'operation': operation, 'sha256': digest, **detail}
 
 
 @serialized_profile_edit
-def apply_action(profile, page, operation, coordinate, expected_sha256, source_coordinate='', image_path='', expected_image_sha256='', root=ROOT, backups=BACKUPS):
+def apply_action(profile, page, operation, coordinate, expected_sha256, source_coordinate='', image_path='', expected_image_sha256='', root=ROOT, backups=BACKUPS, flow_steps=None, flow_title=''):
     import copy
     import uuid
     if vendor_running():
         raise RuntimeError('Quit STREONOR completely before editing profiles.')
-    preview = prepare_action(profile, page, operation, coordinate, source_coordinate, image_path, root)
+    preview = prepare_action(profile, page, operation, coordinate, source_coordinate, image_path, root, flow_steps, flow_title)
     if preview['sha256'] != expected_sha256:
         raise ValueError('Profile changed since preview; inspect and preview again')
     if operation in ('set_icon', 'use_existing_icon') and preview['image_sha256'] != expected_image_sha256:
@@ -265,7 +269,9 @@ def apply_action(profile, page, operation, coordinate, expected_sha256, source_c
     actions = doc['Actions']
     icon = None
     icon_data = None
-    if operation in ('clone', 'create_from_template'):
+    if operation == 'set_flow':
+        actions[coordinate] = build_flow(actions, coordinate, flow_steps, flow_title)
+    elif operation in ('clone', 'create_from_template'):
         action = copy.deepcopy(actions[source_coordinate])
         action['ActionID'] = str(uuid.uuid4())
         actions[coordinate] = action

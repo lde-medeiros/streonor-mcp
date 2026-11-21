@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.0
+
+- Native ordered Multi Action flows built from same-page action templates.
+- Blank scene preview and creation with vendor catalog registration and backup.
+- Protocol coverage for all 13 tools, scene creation, duplicate rejection and ordered flows.
+
 ## 0.3.0
 
 - Release-pinned uvx setup for Claude, Codex and JSON clients.
