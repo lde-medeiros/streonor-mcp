@@ -18,6 +18,24 @@ class ProfileTests(unittest.TestCase):
         self.path.write_text(json.dumps(self.original), encoding='utf-8')
     def tearDown(self):
         self.temp.cleanup()
+    def test_toolbox_discovery_skips_malformed_manifest_and_entries(self):
+        plugins = Path(self.temp.name) / 'plugins'
+        manifests = {
+            'broken': [],
+            'wrong-actions': {'Actions': {}},
+            'mixed': {'Name': 42, 'Actions': [
+                {'UUID': [], 'Name': 'Bad UUID'},
+                {'UUID': 'bad-name', 'Name': 42},
+                {'UUID': 'website', 'Name': 'Website'},
+            ]},
+        }
+        for name, manifest in manifests.items():
+            path = plugins / (name + '.sdPlugin') / 'manifest.json'
+            path.parent.mkdir(parents=True)
+            path.write_text(json.dumps(manifest), encoding='utf-8')
+        with patch('streonor_mcp.profiles.vendor_dir', return_value=plugins.parent), patch('streonor_mcp.profiles.sys.platform', 'linux'):
+            actions = profiles.list_installed_actions()
+        self.assertEqual([(action['uuid'], action['plugin']) for action in actions], [('website', None)])
     def test_preview_and_apply_backup(self):
         change = profiles.prepare(self.profile, None, '0,0', 'path', 'https://new.test', self.root)
         self.assertEqual(change['old_value'], 'https://old.test')

@@ -16,5 +16,5 @@ outputs are published without replacing an existing file. Failed profile edits r
 uncommitted icon files. backups are retained. No backup pruning occurs automatically.
 
 Report vulnerabilities privately using GitHub's private vulnerability reporting when available.
-If unavailable on this private repository, contact the repository owner privately rather than
-posting credentials or exploit details in a public issue.
+If private reporting is unavailable, contact the repository owner directly. Keep credentials
+and vulnerability details out of public issues.

@@ -4,7 +4,7 @@ import json
 import uuid
 
 
-def build_action(name, settings=None, controller='Keypad', in_flow=False):
+def build_action(name, settings=None, controller='Keypad', in_flow=False, hotkey=''):
     from .profiles import list_installed_actions
     if not isinstance(name, str) or not name.strip():
         raise ValueError('Provide an installed action name or UUID')
@@ -16,6 +16,8 @@ def build_action(name, settings=None, controller='Keypad', in_flow=False):
     if len(matches) != 1:
         raise ValueError('Action not found or ambiguous. Use an exact UUID or plugin/name from list_available_actions')
     metadata = matches[0]
+    if metadata['uuid'] == 'com.hotspot.streamdock.profile.openchild':
+        raise ValueError('Use the STREONOR app to create folders and their linked pages')
     if metadata.get('only_in_flows') and not in_flow:
         raise ValueError('This Toolbox item can only be added inside a flow')
     if in_flow and metadata.get('supported_in_flows') is False:
@@ -37,6 +39,13 @@ def build_action(name, settings=None, controller='Keypad', in_flow=False):
             if key in defaults and type(defaults[key]) is not type(value):
                 raise ValueError('Settings must match declared default JSON types')
             defaults[key] = value
+    if hotkey:
+        if metadata['uuid'] != 'com.hotspot.streamdock.system.hotkey' or controller != 'Keypad':
+            raise ValueError('A direct hotkey requires a native Hotkey keypad action')
+        if settings is not None and 'Hotkeys' in settings:
+            raise ValueError('Supply a hotkey chord or native Hotkeys settings, not both')
+        from .hotkeys import settings_for_chord
+        defaults = settings_for_chord(defaults, hotkey)
     json.dumps(defaults, allow_nan=False)
     states = copy.deepcopy(metadata.get('states') or [{'Image': ''}])
     return {'ActionID': str(uuid.uuid4()), 'Controller': '' if in_flow else controller,

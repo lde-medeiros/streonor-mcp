@@ -101,20 +101,27 @@ Running this server on Linux does not provide access to a Windows app through lo
 
 ## Tools and edit workflow
 
+MCP clients can show plain-language titles alongside the tool identifiers used below.
+
 | Tool | Purpose |
 | --- | --- |
 | `list_supported_devices` | Device registry and known capabilities |
 | `list_available_actions` | Installed plugin action types, including knob actions |
 | `list_profiles`, `read_profile` | Profiles, pages, settings and current content hash |
-| `find_icons` | Search imported icon packs (SVG listing only) |
+| `find_icons` | Search imported icon packs, including SVG assets |
+| `resolve_icon` | Resolve a local icon or generate a label image |
 | `prepare_icon` | Create a 1254 x 1254 PNG without editing a profile |
-| `prepare_boot_logo` | Prepare model-sized artwork. does not upload to device |
+| `prepare_boot_logo` | Prepare model-sized PNG artwork for the Devices menu |
+| `preview_scene_creation`, `create_scene` | Create a blank scene or copy selected controls |
+| `preview_scene_change`, `apply_scene_change` | Rename or archive a registered scene |
+| `preview_page_order`, `reorder_pages` | Preview and reorder existing pages |
+| `preview_control_restore`, `restore_controls` | Restore controls from a scoped MCP backup |
 | `preview_setting_change`, `apply_setting_change` | Guarded changes to existing settings |
-| `preview_action_change`, `apply_action_change` | Clone/remove actions and set/clear icons |
+| `preview_action_change`, `apply_action_change` | Create, clone, configure, or remove actions, build flows, and manage icons |
 
 Read the intended profile and page, preview the edit, then pass the returned hash to the matching apply tool. Every profile write creates a backup. The app must be closed for writes. the UI updates after reopening. Windows apply tools accept `manage_app=true` to handle closing and reopening. If the app stays in the tray, explicit `force_close=true` permits termination and may discard unsaved settings. A changed hash still blocks the edit. inspect and preview again. This is editing with an app restart, not live editing.
 
-Actions can be cloned from an existing same-page action or created with create_by_name from installed Toolbox metadata. configure_action replaces a slot's complete settings object. Creation alone does not verify plugin-specific runtime behavior. Knob settings are editable where present in the vendor profile. Scenes can be created, renamed and deleted using the scene tools. Page management, live event streaming and invoking arbitrary Toolbox actions are not implemented. Unknown settings require the same JSON type as their existing value.
+Actions can be cloned from an existing same-page action or created with create_by_name from installed Toolbox metadata. configure_action replaces a slot's complete settings object. Creation alone does not verify plugin-specific runtime behavior. Knob settings are editable where present in the vendor profile. Scenes can be created, renamed and deleted using the scene tools. Page creation and deletion, live event streaming, and direct Toolbox invocation are pending. Unknown settings require the same JSON type as their existing value.
 
 Imported PNG/JPEG/BMP/GIF/WebP icons become exactly **1254 x 1254 pixels, 1:1, PNG**, with transparent padding, preserved proportions and no cropping. The first frame of animated inputs is used. Small source images are enlarged without adding detail. Original imported files are preserved. `prepare_icon` refuses to overwrite its output. Self-contained SVG icons are rendered to PNG. External resources, scripts and SVG text are rejected.
 
@@ -134,7 +141,7 @@ streonor-mcp --version
 
 CI runs on Windows, macOS and Linux with Python 3.12/3.13. A CI configuration is not evidence that all hosted jobs or hardware tests have run.
 
-Add hardware metadata in `streonor_mcp/devices.py`. leave unknown capabilities unset. Keep generic profile/image logic reusable, platform paths in `paths.py`, and lifecycle handling in `app.py`. See [CONTRIBUTING.md](../CONTRIBUTING.md), [SECURITY.md](../SECURITY.md) and [CHANGELOG.md](../CHANGELOG.md). Never add undocumented USB writes or commit personal profiles/tokens. The repository remains private until its owner chooses to publish it.
+Add hardware metadata in `streonor_mcp/devices.py`. leave unknown capabilities unset. Keep generic profile/image logic reusable, platform paths in `paths.py`, and lifecycle handling in `app.py`. See [CONTRIBUTING.md](../CONTRIBUTING.md), [SECURITY.md](../SECURITY.md) and [CHANGELOG.md](../CHANGELOG.md). Never add undocumented USB writes or commit personal profiles/tokens.
 
 File safety limits: manifests are capped at 32 MiB, icon inputs at 16 MiB and 16 million pixels. Non-finite JSON numbers are rejected. Icon and boot-artwork preparation refuse to overwrite existing outputs. Profile-root locks serialize cooperating MCP clients on the same local filesystem. they do not lock the vendor app or arbitrary editors. Atomic replacement still has a small race with unrelated writers. Backups should be retained according to your own policy. no automatic pruning removes them.
 
@@ -153,3 +160,13 @@ New actions and flows have automatic icons by default. Destination changes also 
 ## Name-based actions and hotkeys
 
 create_by_name takes action_name as an installed name, qualified plugin/name or exact UUID. action_settings is optional. Unknown settings have no published schema and require verification in the native app. configure_action accepts a complete replacement settings object with that limitation. Controller restrictions and flow-only items are enforced. Flow steps can use action_name instead of source_coordinate, and native Hotkey steps accept a hotkey chord such as Ctrl+Shift+P. Modifiers and delays are independent per step.
+
+To put one chord on a key, use `create_by_name` with the native Hotkey action and `hotkey="Ctrl+Shift+P"`. To add multiple chords or delays, use `set_flow`.
+
+## Restore controls from a backup
+
+Use the backup filename returned by a profile edit. Preview it for the same scene and page, review the changed coordinates, and pass both hashes to `restore_controls`. The current controls are backed up before the restore. Backups created before scene and page identifiers were included in their filenames require manual recovery.
+
+## Change the boot logo
+
+Use `prepare_boot_logo` to make a 320 × 240 PNG for the S6 Mini. Choose `fit="cover"` to fill the frame or `fit="contain"` to keep the entire image with black padding. In STREONOR, open **Setting → Device** and select **Replace the boot logo (Resolution 320*240)**. Choose the prepared PNG. The MCP prepares the image locally. The vendor app applies it to the device.
