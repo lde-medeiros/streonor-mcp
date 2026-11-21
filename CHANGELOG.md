@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.0
+
+- Default icons for new actions and flows, plus destination changes.
+- Local icon resolution with a generated label fallback and safe SVG support.
+- Name-based installed Toolbox slots with explicit runtime configuration limits.
+- Native multi-step hotkey chords with separate modifiers and delays.
+- Everyday create, read, update and delete examples.
+
 ## 0.5.0
 
 - Scene rename/delete with catalog checks and full-folder archival.
