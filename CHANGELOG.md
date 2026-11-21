@@ -5,7 +5,7 @@
 - Replace an occupied control by action name in one write. Apply preferred images for several states together and reuse prepared actions and icons on apply.
 - Opt in to fast managed restarts on Windows with `STREONOR_FAST_RESTART=1`.
 
-- Set or reset the selected S6 Mini scene’s Scene Shift icon in place through the running Windows app. The scene ID and name are preserved.
+- Set or reset the selected S6 Mini scene’s keypad and Scene Shift icons, including the selected Hotkey Switch state, in place through the running Windows app. The scene ID and name are preserved.
 
 - Import an edited scene copy with its pages and icons while STREONOR stays open on Windows.
 - Preview a full layout and import edits across multiple pages in one step. Create, replace, configure, or remove controls and choose which pages to rebuild. Include Action Flows and target individual icon states.

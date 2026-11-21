@@ -53,3 +53,11 @@ class InPlaceIconTests(unittest.TestCase):
         self.assertTrue(_only_icon_changed(saved, restored, '4,1', ''))
         restored['Actions']['4,1']['Settings']['ProfileUUID'] = 'changed'
         self.assertFalse(_only_icon_changed(saved, restored, '4,1', ''))
+
+    def test_verifies_only_the_requested_icon_state_changed(self):
+        from streonor_mcp.live_ui import _only_icon_changed
+
+        before = {'Actions': {'2,1': {'Controller': '', 'States': [{'Image': 'active.png'}, {'Image': 'old.png'}]}}}
+        after = {'Actions': {'2,1': {'Controller': '', 'States': [{'Image': 'active.png'}, {'Image': 'muted.png'}]}}}
+        self.assertTrue(_only_icon_changed(before, after, '2,1', 'muted.png', 1))
+        self.assertFalse(_only_icon_changed(before, after, '2,1', 'muted.png', 0))

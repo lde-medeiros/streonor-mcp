@@ -136,7 +136,7 @@ Some actions require plugin-specific settings, connections, or a compatible cont
 The agent reads the target, previews the change, and applies it using the returned hashes.
 
 - **Windows live scene copies (unreleased):** Update an action, setting, or icon while STREONOR stays open. Fill an entire page or edit several pages in one import. Open the new scene by its name in STREONOR. [Live editing workflow](docs/reference.md#edit-while-streonor-stays-open).
-- **Windows live in-place icon edit (unreleased):** Set the Scene Shift icon on the selected S6 Mini scene and keep its name and ID. [Setup and supported control](docs/reference.md#edit-while-streonor-stays-open).
+- **Windows live in-place icon edit (unreleased):** Set or reset keypad and Scene Shift icons on the selected S6 Mini scene and keep its name and ID. [Setup and supported controls](docs/reference.md#edit-while-streonor-stays-open).
 - **Other in-place edits:** Close STREONOR first or request `manage_app=true` on Windows to close and reopen it. Use `force_close=true` only if you accept losing unsaved app settings.
 
 In-place edits retain backups. Scene deletion retains the scene folder and catalog backup. Icons are saved as **1254 × 1254 square PNGs**.

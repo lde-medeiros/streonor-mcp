@@ -41,15 +41,17 @@ def _matches_icon(folder, filename, expected):
         return False
 
 
-def _only_icon_changed(before, after, coordinate, filename):
+def _only_icon_changed(before, after, coordinate, filename, state_index=0):
     action = before['Actions'][coordinate]
     edited = after['Actions'].get(coordinate, {})
-    # STREONOR serializes this native dial's inferred controller as an empty string.
+    # STREONOR can serialize an inferred controller as an empty string.
     controller = edited.get('Controller')
     if controller not in (action.get('Controller'), ''):
         return False
+    states = list(action['States'])
+    states[state_index] = {**states[state_index], 'Image': filename}
     expected = {**before, 'Actions': {**before['Actions'], coordinate: {
-        **action, 'Controller': controller, 'States': [{**action['States'][0], 'Image': filename}]
+        **action, 'Controller': controller, 'States': states
     }}}
     return after == expected
 
@@ -72,13 +74,16 @@ def edit_icon(profile, page, coordinate, expected_sha256, image_path, expected_i
     action = doc['Actions'].get(coordinate, {})
     if digest != expected_sha256:
         raise ValueError('Scene changed since preview')
+    col, row = map(int, coordinate.split(','))
+    keypad = 0 <= row < 3 and 0 <= col < 3 and action.get('Controller') in ('Keypad', '')
+    scene_shift = (coordinate == '4,1' and action.get('UUID') == 'com.hotspot.streamdock.profile.rotate'
+                   and action.get('Controller') in ('Knob', ''))
+    states = action.get('States') or []
     if (doc.get('DeviceUUID') != 'StreonorS6' or page not in ('', profile)
             or doc.get('Pages') != {'Current': profile, 'Pages': [profile]}
-            or coordinate != '4,1' or state_index != 0
-            or action.get('UUID') != 'com.hotspot.streamdock.profile.rotate'
-            or action.get('Name') != 'Scene Shift' or action.get('Controller') not in ('Knob', '')
-            or len(action.get('States', [])) != 1):
-        raise ValueError('In-place icon editing currently supports Scene Shift at 4,1 on a single-page S6 Mini scene')
+            or not (keypad or scene_shift) or not 0 <= state_index < len(states)
+            or not action.get('Name')):
+        raise ValueError('Live icons require a keypad control or Scene Shift on a single-page S6 Mini scene')
     if sum(p['name'] == doc['Name'] for p in profiles.list_profiles()) != 1:
         raise ValueError('Scene name must uniquely identify the target in STREONOR')
     restore_default = operation == 'clear_icon'
@@ -87,7 +92,7 @@ def edit_icon(profile, page, coordinate, expected_sha256, image_path, expected_i
         raise RuntimeError('Open STREONOR before requesting live editing')
     pid = int(pid)
     source_path = profiles.profile_path(profile)
-    old_image = action['States'][0].get('Image')
+    old_image = states[state_index].get('Image')
     if restore_default:
         already_applied = old_image == ''
     else:
@@ -113,11 +118,23 @@ def edit_icon(profile, page, coordinate, expected_sha256, image_path, expected_i
         raise RuntimeError(f'Select {doc["Name"]} in STREONOR before editing it live')
     canvas = _one((c for c in window.descendants(class_name='SDActionCanvasWidget') if c.is_visible()),
                   'visible control grid')
-    knobs = [k for k in canvas.descendants(class_name='SDKnobBackground') if k.is_visible()]
-    if len(knobs) != 3:
-        raise RuntimeError('The visible S6 Mini dial layout does not match the verified layout')
-    target = max(knobs, key=lambda k: k.rectangle().left)
-    label = _one(target.descendants(class_name='SDActionCanvasLabel'), 'control at 4,1')
+    if keypad:
+        labels = [label for label in canvas.descendants(class_name='SDActionCanvasLabel')
+                  if label.is_visible() and label.parent().element_info.class_name == 'SDDeviceDisplayWidget']
+        labels.sort(key=lambda label: (label.rectangle().top, label.rectangle().left))
+        rows = [labels[i:i + 3] for i in range(0, len(labels), 3)]
+        if (len(labels) != 9 or any(len({key.rectangle().top for key in group}) != 1 for group in rows)
+                or len({group[0].rectangle().top for group in rows}) != 3
+                or any([key.rectangle().left for key in group] !=
+                       [key.rectangle().left for key in rows[0]] for group in rows)):
+            raise RuntimeError('The visible keypad does not match the S6 Mini layout')
+        label = rows[row][col]
+    else:
+        knobs = [k for k in canvas.descendants(class_name='SDKnobBackground') if k.is_visible()]
+        if len(knobs) != 3:
+            raise RuntimeError('The visible S6 Mini dial layout does not match the verified layout')
+        target = max(knobs, key=lambda k: k.rectangle().left)
+        label = _one(target.descendants(class_name='SDActionCanvasLabel'), 'control at 4,1')
     window.set_focus()
     if win32gui.GetForegroundWindow() != window.handle:
         raise RuntimeError('Could not focus the STREONOR window')
@@ -125,7 +142,18 @@ def edit_icon(profile, page, coordinate, expected_sha256, image_path, expected_i
     inspector = _one((i for i in window.descendants(class_name='SDPropertyInspectorWidget') if i.is_visible()),
                      'property inspector')
     _one((t for t in inspector.descendants(control_type='Text')
-          if t.is_visible() and t.window_text() == 'Scene Shift'), 'Scene Shift property inspector')
+          if t.is_visible() and t.window_text() == action['Name']), f'{action["Name"]} property inspector')
+    if len(states) > 1:
+        selectors = [button for button in inspector.descendants(control_type='RadioButton', class_name='QRadioButton')
+                     if button.is_visible()]
+        selectors.sort(key=lambda button: button.rectangle().left)
+        if len(selectors) != len(states) or len({button.rectangle().top for button in selectors}) != 1:
+            raise RuntimeError('The icon state selectors do not match the saved action')
+        selector = selectors[state_index]
+        if selector.get_toggle_state() != 1:
+            # The app saves state selection as the active runtime state.
+            raise RuntimeError('Select the requested icon state in STREONOR, then preview again. '
+                               'For unattended changes to multiple states, use state_images with manage_app=True.')
     icon = _one((i for i in inspector.descendants(class_name='SDActionPropertyInspectorLabel')
                  if i.is_visible()), 'action icon')
     _one(icon.children(control_type='Button'), 'icon menu button').invoke()
@@ -156,11 +184,12 @@ def edit_icon(profile, page, coordinate, expected_sha256, image_path, expected_i
 
     updated, new_digest = _wait_for(read_saved, 'a saved icon change')
     after = updated['Actions'].get(coordinate, {})
-    new_image = (after.get('States') or [{}])[0].get('Image')
+    saved_states = after.get('States') or []
+    new_image = saved_states[state_index].get('Image') if len(saved_states) > state_index else None
     saved_as_requested = (new_image == '' if restore_default
                           else _matches_icon(source_path.parent, new_image, expected_pixels))
     if (not saved_as_requested or new_image == old_image
-            or not _only_icon_changed(doc, updated, coordinate, new_image)
+            or not _only_icon_changed(doc, updated, coordinate, new_image, state_index)
             or live._vendor_pid() != str(pid)):
         raise RuntimeError(f'STREONOR saved changes, but the icon edit could not be fully verified. Backup: {backup}')
     return {'updated': True, 'profile': profile, 'name': doc['Name'], 'coordinate': coordinate,
