@@ -18,13 +18,13 @@ An independent community project. Unaffiliated with STREONOR.
    **Codex**
 
    ```sh
-   codex mcp add streonor -- uvx --python 3.12 streonor-mcp==0.8.2
+   codex mcp add streonor -- uvx --python 3.12 streonor-mcp==0.8.3
    ```
 
    **Claude Code**
 
    ```sh
-   claude mcp add --transport stdio --scope user streonor -- uvx --python 3.12 streonor-mcp==0.8.2
+   claude mcp add --transport stdio --scope user streonor -- uvx --python 3.12 streonor-mcp==0.8.3
    ```
 
 3. Restart your client and ask: “Use STREONOR MCP to list my scenes.”

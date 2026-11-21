@@ -58,7 +58,7 @@ To run the published package without cloning the repository, install [uv](https:
   "mcpServers": {
     "streonor": {
       "command": "uvx",
-      "args": ["--python", "3.12", "streonor-mcp==0.8.2"]
+      "args": ["--python", "3.12", "streonor-mcp==0.8.3"]
     }
   }
 }
